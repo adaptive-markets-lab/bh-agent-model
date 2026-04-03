@@ -1,13 +1,4 @@
-"""
-Core insight of the Brock–Hommes model.
-
-Market dynamics emerge endogenously from a feedback loop:
-
-    Beliefs -> Price -> Profits -> Strategy Switching -> New Beliefs
-
-This implementation follows that loop explicitly at each time step.
-"""
-
+from dataclasses import dataclass, field
 from typing import Sequence
 
 import numpy as np
@@ -15,6 +6,7 @@ import numpy as np
 from bh_agent_model.utils.base.agents import Trader
 
 
+@dataclass(slots=True)
 class Market:
     """
     Represent the market environment in the Brock–Hommes model.
@@ -24,44 +16,48 @@ class Market:
 
     Price evolve endogenously through heterogeneous beliefs (forecast rules)
     and evolutionary competition (fitness-based switching)
-    """
 
-    def __init__(
-        self,
-        traders: Sequence[Trader],
-        beta: float,
-        r: float,
-        sigma2: float,
-        a: float,
-        noise_std: float = 0.001,
-    ) -> None:
-        """
-        Initialize the market.
-
-        Args:
+    Args:
             traders: Trader types available in the market.
             beta: Intensity of choice parameter for strategy switching.
             r: Gross risk-free return.
             sigma2: Variance of returns.
-            a: Risk aversion parameter.
+            risk_aversion: Risk aversion parameter.
             noise_std: Standard deviation of the market noise shock.
 
-        """
-        self.traders = traders
-        self.beta = beta
-        self.r = r
-        self.sigma2 = sigma2
-        self.a = a
-        self.noise_std = noise_std
+    """
 
-        # number of strategy types
-        self.n_types = len(traders)
+    traders: Sequence[Trader]
+    beta: float
+    r: float
+    sigma2: float
+    risk_aversion: float
+    noise_std: float
 
-        # initial population shares (uniform)
-        self.weights = np.ones(self.n_types) / self.n_types
+    n_types: int = field(init=False)
+    weights: np.ndarray = field(init=False)
+    x: float = field(default=0.0, init=False)
 
-        # current price deviation from fundamental value (x_t)
-        self.x = 0.0
+    def __post_init__(self) -> None:
+        """Check data properties and preprocess data."""
+        if len(self.traders) == 0:
+            raise ValueError("traders must contain at least one strategy")
+        if self.beta < 0:
+            raise ValueError("beta must be non-negative")
+        if self.r <= 0:
+            raise ValueError("r must be positive")
+        if self.sigma2 <= 0:
+            raise ValueError("sigma2 must be positive")
+        if self.risk_aversion <= 0:
+            raise ValueError("risk_aversion must be positive")
+        if self.noise_std < 0:
+            raise ValueError("noise_std must be non-negative")
+
+        self.n_types = len(self.traders)
+        self.weights = np.full(self.n_types, 1.0 / self.n_types, dtype=float)
+
+        for trader in self.traders:
+            trader.reset()
 
     def softmax(self, fitnesses: np.ndarray) -> np.ndarray:
         """

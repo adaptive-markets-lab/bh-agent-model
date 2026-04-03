@@ -22,8 +22,8 @@ class Market:
     The market aggregates the behavior of different trader types and determines
     the evolution of prices over time.
 
-    Prices are not set externally but emerge from the interaction of traders'
-    expectations, demands, and strategy switching.
+    Price evolve endogenously through heterogeneous beliefs (forecast rules)
+    and evolutionary competition (fitness-based switching)
     """
 
     def __init__(
@@ -54,10 +54,14 @@ class Market:
         self.a = a
         self.noise_std = noise_std
 
+        # number of strategy types
         self.n_types = len(traders)
+
+        # initial population shares (uniform)
         self.weights = np.ones(self.n_types) / self.n_types
 
-        self.x = 0.0  # price deviation
+        # current price deviation from fundamental value (x_t)
+        self.x = 0.0
 
     def softmax(self, fitnesses: np.ndarray) -> np.ndarray:
         """
@@ -116,21 +120,30 @@ class Market:
                 - Updated strategy weights
 
         """
+        # previous price deviation (x_{t-1})
         x_prev = self.x
 
-        forecasts = np.array([t.forecast(x_prev) for t in self.traders])
+        # belief formation
+        # each trader produces a forecast of next-period price deviation
+        forecasts = np.array([trader.forecast(x_prev) for trader in self.traders])
 
+        # price formation
+        # weighted average of forecasts + noise, discounted by risk-free return
         noise = np.random.normal(0, self.noise_std)
         x_new = (np.dot(self.weights, forecasts) + noise) / self.r
 
+        # realized return
         realized_return = x_new - x_prev
 
-        for t in self.traders:
-            t.update_fitness(realized_return)
+        # traders evaluate performance based on realized return
+        for trader in self.traders:
+            trader.update_fitness(realized_return)
 
-        fitnesses = np.array([t.fitness for t in self.traders])
+        # compute new population shares based on fitness
+        fitnesses = np.array([trader.fitness for trader in self.traders])
         self.weights = self.softmax(fitnesses)
 
+        # update state
         self.x = x_new
 
         return x_new, self.weights

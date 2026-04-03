@@ -1,3 +1,9 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+
+@dataclass(slots=True)
 class Trader:
     """
     Represents a trader type in the Brock–Hommes model.
@@ -10,25 +16,20 @@ class Trader:
     positions based on those expectations, and earn profits depending on
     whether they were correct.
 
+    Args:
+        g: Trend parameter (strategy type).
+        b: Bias term.
+        cost: Strategy cost.
+        name: Name of the strategy.
+
     """
 
-    def __init__(self, g: float, b: float, cost: float, name: str):
-        """
-        Initialize a trader strategy.
-
-        Args:
-            g: Trend parameter (strategy type).
-            b: Bias term.
-            cost: Strategy cost.
-            name: Name of the strategy.
-
-        """
-        self.g = g
-        self.b = b
-        self.cost = cost
-        self.name = name
-        self.fitness = 0.0
-        self.last_demand = 0.0
+    g: float
+    b: float
+    cost: float
+    name: str
+    fitness: float = field(default=0.0, init=False)
+    last_demand: float = field(default=0.0, init=False)
 
     def forecast(self, x_prev: float) -> float:
         """
@@ -46,7 +47,7 @@ class Trader:
         """
         return self.g * x_prev + self.b
 
-    def demand(self, x_prev: float, r: float, sigma2: float, a: float) -> float:
+    def demand(self, x_prev: float, r: float, sigma2: float, risk_aversion: float) -> float:
         """
         Compute the trader's demand for the risky asset.
 
@@ -57,14 +58,14 @@ class Trader:
             x_prev (float): Previous price deviation.
             r (float): Gross risk-free return (1 + interest rate).
             sigma2 (float): Variance of returns (perceived risk).
-            a (float): Risk aversion parameter.
+            risk_aversion (float): Risk aversion parameter.
 
         Returns:
             float: Quantity of the risky asset demanded.
 
         """
         f = self.forecast(x_prev)
-        z = (f - r * x_prev) / (a * sigma2)
+        z = (f - r * x_prev) / (risk_aversion * sigma2)
 
         self.last_demand = z
         return z
@@ -81,6 +82,11 @@ class Trader:
         """
         profit = realized_return * self.last_demand
         self.fitness = profit - self.cost
+
+    def reset(self) -> None:
+        """Reset stateful tracking variables."""
+        self.fitness = 0
+        self.last_demand = 0
 
 
 def fundamentalist(cost: float = 1.0):

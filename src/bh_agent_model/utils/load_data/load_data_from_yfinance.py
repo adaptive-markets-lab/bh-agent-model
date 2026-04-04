@@ -66,10 +66,10 @@ def load_data_from_yfinance(
         raise AssertionError(f"No data found for ticker {ticker}")
 
     # get closing price
-    prices = df["Close"].to_numpy(dtype=float)
+    prices = np.asarray(df["Close"], dtype=float).reshape(-1)
 
     # get dates
-    dates = df.index.to_numpy()
+    dates = np.asarray(df.index)
 
     # compute returns
     if return_type == "log":

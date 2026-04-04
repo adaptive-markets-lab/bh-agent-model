@@ -81,7 +81,7 @@ if __name__ == "__main__":
     axes[1].set_xlabel("Date")
     axes[1].legend()
 
-    # --- Fix spacing ---
+    # fix spacing
     plt.tight_layout()
 
     plt.show()

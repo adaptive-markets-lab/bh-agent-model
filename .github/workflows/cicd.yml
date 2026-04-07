@@ -29,3 +29,21 @@ jobs:
         run: ruff check .
       - name: Run ruff formatter checks
         run: ruff format --check .
+
+  test:
+    name: Run Tests with pytest
+    runs-on: ubuntu-latest
+    if: ${{ github.repository == 'adaptive-markets-lab/bh-agent-model' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Add project root to PYTHONPATH
+        run: echo "PYTHONPATH=$PYTHONPATH:$(pwd)" >> $GITHUB_ENV
+      - name: Run pytest
+        run: pytest

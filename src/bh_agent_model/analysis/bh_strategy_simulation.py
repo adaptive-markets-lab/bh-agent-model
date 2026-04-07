@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from bh_agent_model.utils.base.agents import chartist, contrarian, fundamentalist, optimist
-from bh_agent_model.utils.base.market import Market
+from bh_agent_model.utils.base.markets import Market
 from bh_agent_model.utils.load_data.load_data_from_yfinance import load_data_from_yfinance
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
-
 from bh_agent_model.utils.base.markets import Market
+from bh_agent_model.utils.base.agents import fundamentalist, chartist
 
 
 def test_market_initialization(traders):

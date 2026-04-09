@@ -1,12 +1,14 @@
 import numpy as np
-import pytest
-from bh_agent_model.utils.base.agents import Trader, fundamentalist, chartist, contrarian, optimist
+
+from bh_agent_model.utils.base.agents import Trader, chartist, contrarian, fundamentalist, optimist
+
 
 def test_forecast():
     t = Trader(g=2.0, b=1.0, cost=0.0, name="test")
     result = t.forecast(3.0)
 
     assert result == 2.0 * 3.0 + 1.0
+
 
 def test_demand():
     t = Trader(g=1.0, b=0.0, cost=0.0, name="test")
@@ -18,9 +20,10 @@ def test_demand():
     assert np.isclose(z, expected)
     assert t.last_demand == z
 
+
 def test_update_fitness():
     t = Trader(g=0.0, b=0.0, cost=0.1, name="test")
-    
+
     t.last_demand = 2.0
     t.fitness = 1.0
 
@@ -29,6 +32,7 @@ def test_update_fitness():
     # profit = 1 * 2 = 2
     # fitness = 0.5*1 + 0.5*2 - 0.1 = 1.4
     assert np.isclose(t.fitness, 1.4)
+
 
 def test_reset():
     t = Trader(g=0.0, b=0.0, cost=0.0, name="test")
@@ -39,6 +43,7 @@ def test_reset():
 
     assert t.fitness == 0.0
     assert t.last_demand == 0.0
+
 
 def test_fundamentalist():
     t = fundamentalist()

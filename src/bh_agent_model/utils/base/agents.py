@@ -12,7 +12,7 @@ class Trader:
     based on past performance (fitness). This class encapsulates the forecasting
     logic, demand calculation, and evolutionary fitness tracking for a specific rule.
 
-    Attributes:
+    Args:
         g (float): Trend-following parameter (slope).
         b (float): Constant bias parameter (intercept).
         cost (float): Periodic information or transaction cost for this strategy.
@@ -82,6 +82,13 @@ def fundamentalist(cost: float = 0.001) -> Trader:
 
     Forecasts that the price will return to fundamental value (0).
     Usually incurs a cost to reflect the effort of analyzing fundamentals.
+
+    Args:
+        cost: Information or analysis cost deducted from the agent's fitness score.
+
+    Returns:
+        A Trader configured as a fundamentalist with zero trend and bias coefficients.
+
     """
     return Trader(g=0.0, b=0.0, cost=cost, name="Fundamentalist")
 
@@ -91,6 +98,14 @@ def chartist(g: float = 1.2) -> Trader:
     Trend-follower. Extrapolates recent price movements.
 
     Values of g > R lead to explosive price bubbles and instability.
+
+    Args:
+        g: Trend-extrapolation coefficient. Values above the risk-free rate
+            destabilise the market and can generate persistent bubbles.
+
+    Returns:
+        A Trader configured as a chartist with zero bias and no information cost.
+
     """
     return Trader(g=g, b=0.0, cost=0.0, name="Chartist")
 
@@ -100,6 +115,14 @@ def contrarian(g: float = -0.6) -> Trader:
     Mean-reversion agent. Bets against the current trend.
 
     Provides liquidity and stabilizes the market during high volatility.
+
+    Args:
+        g: Trend-extrapolation coefficient. Negative values cause the agent
+            to forecast a reversal, dampening momentum and stabilising prices.
+
+    Returns:
+        A Trader configured as a contrarian with zero bias and no information cost.
+
     """
     return Trader(g=g, b=0.0, cost=0.0, name="Contrarian")
 
@@ -110,5 +133,13 @@ def optimist(b: float = 0.002, cost: float = 0.001) -> Trader:
 
     Maintains a constant positive outlook (bullish) regardless of price.
     Useful for simulating 'noise' or persistent market sentiment.
+
+    Args:
+        b: Constant bullish bias added to the price forecast each period.
+        cost: Information or analysis cost deducted from the agent's fitness score.
+
+    Returns:
+        A Trader configured as an optimist with zero trend coefficient.
+
     """
     return Trader(g=0.0, b=b, cost=cost, name="Optimist")

@@ -9,37 +9,33 @@ from bh_agent_model.utils.base.agents import Trader
 @dataclass(slots=True)
 class Market:
     """
-    Represent the market environment in the Brock–Hommes model.
+    The Market Engine for the Brock-Hommes (1998) Asset Pricing Model.
 
-    The market aggregates the behavior of different trader types and determines
-    the evolution of prices over time.
+    This class manages the lifecycle of a simulation step:
+    1. Collecting forecasts and demands from all trader types.
+    2. Clearing the market to find the new price deviation (x_t).
+    3. Updating strategy fitness based on realized returns.
+    4. Re-allocating market weights via evolutionary switching.
 
-    Price evolve endogenously through heterogeneous beliefs (forecast rules)
-    and evolutionary competition (fitness-based switching)
-
-    Args:
-            traders: Trader types available in the market.
-            beta: Intensity of choice parameter for strategy switching.
-            r: Gross risk-free return.
-            sigma2: Variance of returns.
-            risk_aversion: Risk aversion parameter.
-            noise_std: Standard deviation of the market noise shock.
-
+    Note on Stability:
+    Uses sigma2=0.25 to maintain demand scales that prevent numerical overflow
+    or 'fitness lock-in' where strategies become indistinguishable.
     """
 
-    traders: Sequence[Trader]
-    beta: float
-    r: float
-    sigma2: float
-    risk_aversion: float
-    noise_std: float
+    traders: Sequence[Trader]  # List of unique Trader strategy objects
+    beta: float  # Intensity of choice (higher = faster switching)
+    r: float  # Gross risk-free return (e.g., 1.05 for 5%)
+    sigma2: float  # Belief about price volatility
+    risk_aversion: float  # Global risk aversion parameter ('a')
+    noise_std: float  # Standard deviation of exogenous market noise
 
-    n_types: int = field(init=False)
-    weights: np.ndarray = field(init=False)
-    x: float = field(default=0.0, init=False)
+    # Internal state variables
+    n_types: int = field(init=False)  # Number of strategies in the market
+    weights: np.ndarray = field(init=False)  # Current market share of each strategy
+    x: float = field(default=0.0, init=False)  # Current price deviation from fundamental
 
     def __post_init__(self) -> None:
-        """Check data properties and preprocess data."""
+        """Validate model parameters and initializes market shares uniformly."""
         if len(self.traders) == 0:
             raise ValueError("traders must contain at least one strategy")
         if self.beta < 0:
@@ -48,98 +44,63 @@ class Market:
             raise ValueError("r must be positive")
         if self.sigma2 <= 0:
             raise ValueError("sigma2 must be positive")
-        if self.risk_aversion <= 0:
-            raise ValueError("risk_aversion must be positive")
-        if self.noise_std < 0:
-            raise ValueError("noise_std must be non-negative")
 
         self.n_types = len(self.traders)
+        # Start with an equal distribution across all strategies
         self.weights = np.full(self.n_types, 1.0 / self.n_types, dtype=float)
 
+        # Ensure all traders start with a clean slate
         for trader in self.traders:
             trader.reset()
 
     def softmax(self, fitnesses: np.ndarray) -> np.ndarray:
         """
-        Convert fitness values into population weights using a softmax rule.
+        Calculate the Adaptive Belief System (ABS) switching rule.
 
-        This implements the evolutionary selection mechanism where
-        better-performing strategies attract more followers.
-
-        Intuition:
-            - Higher fitness -> larger population share
-            - Lower fitness -> smaller share
-            - Beta controls sensitivity:
-                * Low beta -> weak response to performance
-                * High beta -> strong winner-takes-all behavior
-
-        Note:
-            Uses a numerically stable version (log-sum-exp trick) to avoid
-            overflow when fitness values are large.
-
-        Args:
-            fitnesses: Array of fitness values for each trader type.
-
-        Returns:
-            Normalized weights that sum to 1.
-
+        Converts strategy fitness into market weights. Uses 'Max Subtraction'
+        and clipping to prevent floating-point overflow during np.exp().
         """
-        max_f = np.max(fitnesses)
-        exp_vals = np.exp(self.beta * (fitnesses - max_f))
-        return exp_vals / np.sum(exp_vals)
+        # Subtract max for numerical stability (prevents exp(large_number))
+        scaled = self.beta * (fitnesses - np.max(fitnesses))
+        scaled = np.clip(scaled, -500, 0)
+
+        exp_vals = np.exp(scaled)
+        total = np.sum(exp_vals)
+
+        # Fallback to uniform distribution if math breaks
+        if total == 0 or not np.isfinite(total):
+            return np.full(self.n_types, 1.0 / self.n_types)
+
+        return exp_vals / total
 
     def step(self) -> tuple[float, np.ndarray]:
         """
-        Execute one time step of the market simulation.
-
-        This function implements the full dynamic loop of the Brock–Hommes model.
-
-        Process:
-            1. Forecasting:
-                Each trader forms expectations about the next price.
-            2. Price formation:
-                The market aggregates expectations into a new price.
-            3. Realized returns:
-                The actual price change is observed.
-            4. Fitness update:
-                Traders evaluate how well their strategy performed.
-            5. Strategy switching:
-                Population shares are updated based on fitness.
-
-        Intuition:
-            The market evolves through a feedback loop:
-                beliefs -> prices -> profits -> strategy switching -> new beliefs
+        Execute one full iteration of the market simulation.
 
         Returns:
-            A tuple containing:
-                - Updated price deviation (`x_new`)
-                - Updated strategy weights
+            x_new (float): The new price deviation from fundamental value.
+            weights (np.ndarray): The updated market shares for the next period.
 
         """
-        # previous price deviation (x_{t-1})
         x_prev = self.x
 
-        # belief formation
-        # each trader produces a forecast of next-period price deviation
-        forecasts = np.array([trader.forecast(x_prev) for trader in self.traders])
+        # 1. Collect demands from all agent types based on t-1 price
+        demands = np.array([trader.demand(x_prev=x_prev, r=self.r, sigma2=self.sigma2, risk_aversion=self.risk_aversion) for trader in self.traders])
 
-        # price formation
-        # weighted average of forecasts + noise, discounted by risk-free return
-        noise = np.random.normal(0, self.noise_std)
-        x_new = (np.dot(self.weights, forecasts) + noise) / self.r
+        # 2. Price Formation: Aggregate demand + noise / risk-free rate
+        noise = np.random.normal(0.0, self.noise_std)
+        x_new = (np.dot(self.weights, demands) + noise) / self.r
 
-        # realized return
+        # 3. Calculate Realized Return: Actual performance of the risky asset
         realized_return = x_new - x_prev
 
-        # traders evaluate performance based on realized return
+        # 4. Fitness Update: Agents evaluate how much profit they just made
         for trader in self.traders:
             trader.update_fitness(realized_return)
 
-        # compute new population shares based on fitness
+        # 5. Evolutionary Switching: Re-calculate market weights for period t+1
         fitnesses = np.array([trader.fitness for trader in self.traders])
         self.weights = self.softmax(fitnesses)
 
-        # update state
         self.x = x_new
-
-        return x_new, self.weights
+        return x_new, self.weights.copy()

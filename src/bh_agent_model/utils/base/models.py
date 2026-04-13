@@ -22,3 +22,58 @@ class AssetTimeSeries:
     prices: np.ndarray
     returns: np.ndarray
     sigma2: float
+
+
+@dataclass
+class BaselineParams:
+    """
+    Baseline parameter set for the Brock–Hommes simulation.
+
+    Used only to initialise sigma2 from empirical data; Sobol samples
+    replace all other values during the analysis.
+
+    Args:
+        beta: Intensity of choice (evolutionary switching speed).
+        r: Gross risk-free return.
+        sigma2: Perceived return variance.
+        risk_aversion: Risk aversion coefficient.
+        g_chartist: Trend parameter for the chartist.
+        g_contrarian: Trend parameter for the contrarian.
+        b_optimist: Bias term for the optimist.
+        cost_fundamentalist: Information cost for the fundamentalist.
+        cost_optimist: Strategy cost for the optimist.
+
+    """
+
+    beta: float = 0.5
+    r: float = 1.01
+    sigma2: float = 1e-4
+    risk_aversion: float = 5.0
+    g_chartist: float = 1.1
+    g_contrarian: float = -0.8
+    b_optimist: float = 0.0005
+    cost_fundamentalist: float = 0.0002
+    cost_optimist: float = 0.0001
+
+
+@dataclass
+class SobolResult:
+    """
+    Sobol indices for a single output metric.
+
+    Args:
+        output_name: Name of the output metric (e.g. 'mean_weight_chartist').
+        param_names: Ordered list of parameter names.
+        s1: First-order indices, shape (n_params,).
+        s1_conf: 95% confidence intervals for S1, shape (n_params,).
+        st: Total-order indices, shape (n_params,).
+        st_conf: 95% confidence intervals for ST, shape (n_params,).
+
+    """
+
+    output_name: str
+    param_names: list[str]
+    s1: np.ndarray
+    s1_conf: np.ndarray
+    st: np.ndarray
+    st_conf: np.ndarray

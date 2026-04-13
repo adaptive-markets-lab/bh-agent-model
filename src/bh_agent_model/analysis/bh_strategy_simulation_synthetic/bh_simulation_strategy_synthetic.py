@@ -10,7 +10,27 @@ from bh_agent_model.utils.base.agents import chartist, fundamentalist, optimist
 from bh_agent_model.utils.base.markets import Market
 
 if __name__ == "__main__":
-    """Run the Brock-Hommes ABM simulation and generate all visualisation plots."""
+    """
+    Synthetic Simulation — Brock-Hommes ABM
+    ========================================
+
+    NOTE: This script runs exclusively on synthetically generated data.
+    It is NOT designed for empirical/real-world return series.
+
+    The market generates its own price path endogenously each period via:
+        x_t = (Σ n_h · z_h(x_{t-1}) + ε) / R
+
+    where ε ~ N(0, noise_std) is the exogenous shock injected at each step.
+    This means the price deviation x_t is a direct output of the model's
+    own internal dynamics — agent demands, fitness updates, and strategy
+    switching — rather than being driven by observed data.
+
+    Purpose:
+        Isolate and study the theoretical mechanics of the Adaptive Belief
+        System (ABS): how strategy switching (controlled by beta) interacts
+        with trend-following (chartist g), mean-reversion (fundamentalist),
+        and sentiment bias (optimist b) to produce emergent price dynamics.
+    """
     # ---------------------------------------------------------------------------
     # Configuration: Model Hyperparameters
     # ---------------------------------------------------------------------------

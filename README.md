@@ -1,10 +1,40 @@
-# bh-agent-model
 
-Agent-based modeling framework for behavioral finance research.
+# bh-agent-model: Brock-Hommes Agent-Based Asset Pricing Model
+
+This repository implements the Brock–Hommes Adaptive Belief System, an Agent-Based Modeling framework for behavioral finance research. It explores how competition between heterogeneous forecasting heuristics drives financial market dynamics.
+
+## Project Structure
+
+```text
+├── src/bh_agent_model
+│   ├── analysis/                         # Research & Experimentation
+│   │   ├── bh_sensitivity_analysis/      # Global Sensitivity (Sobol indices)
+│   │   ├── bh_strategy_simulation_base/  # Base simulation framework
+│   │   ├── bh_strategy_simulation_real_data/ # Empirical replay (S&P 500)
+│   │   └── bh_strategy_simulation_synthetic_data/ # Endogenous dynamics
+│   └── utils/                            # Core Logic & Utilities
+│       ├── base/                         # Model Foundations
+│       │   ├── agents.py                 # Trader types and demand rules
+│       │   ├── markets.py                # Market clearing & switching
+│       │   └── models.py                 # Main orchestrators
+│       ├── helper/                       # Shared utility functions
+│       └── load_data/                    # yfinance data ingestion
+├── tests/                                # Testing Suite
+│   └── unit/
+│       ├── utils/base/
+│       │   ├── test_agents.py            # Demand & forecast validation
+│       │   └── test_markets.py           # Price clearing & softmax tests
+│       └── test_dummy.py                 # CI/CD sanity checks
+├── .gitignore                            # Environment & cache filters
+├── .pre-commit-config.yaml               # Git hooks for code quality
+├── .ruff.toml                            # Linting & formatting rules
+├── conftest.py                           # Global test fixtures
+├── pytest.ini                            # Pytest configuration
+└── requirements.txt                      # Project dependencies
 
 ---
 
-## Getting Started
+## Getting Started (For us users)
 
 ### 1. Clone the repository
 

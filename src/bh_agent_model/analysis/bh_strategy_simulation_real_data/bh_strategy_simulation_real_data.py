@@ -84,4 +84,7 @@ if __name__ == "__main__":
     # fix spacing
     plt.tight_layout()
 
+    # save figure
+    plt.savefig("bh_strategy_simulation_real_data.png", dpi=300, bbox_inches="tight")
+
     plt.show()

@@ -21,12 +21,6 @@ consistent with the existing example and with Brock-Hommes style dynamics,
 this script performs the demand -> price update -> fitness -> softmax loop
 explicitly while still using the repo's Trader constructors and Market
 softmax/validation.
-
-Usage
------
-python bh_repo_simulations.py
-python bh_repo_simulations.py --output-dir results --seed 42
-python bh_repo_simulations.py --trend-g 1.2 --noise-std 0.0
 """
 
 from __future__ import annotations

@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+from matplotlib.patches import Patch
 
 from bh_agent_model.utils.base.agents import chartist, contrarian, fundamentalist, optimist
 from bh_agent_model.utils.base.math_ops import softmax_stable
@@ -231,8 +232,6 @@ def plot_regime(x_hist, w_hist, names):
     ax0.axhline(0, color="grey", lw=0.5, ls="--")
     ax0.set_ylabel("Price deviation (x_t)")
     ax0.set_title("Price Deviation — shaded by dominant strategy")
-
-    from matplotlib.patches import Patch
 
     ax0.legend(handles=[Patch(facecolor=regime_colors[k], alpha=0.5, label=f"{regime_labels[k]} dominant") for k in regime_colors], loc="upper right", fontsize=8)
 

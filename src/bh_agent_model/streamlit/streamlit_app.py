@@ -283,18 +283,18 @@ elif page == "2 · Model Design":
         """)
 
         st.markdown("### Agents")
-        data = {
-            "Strategy": ["Fundamentalist", "Chartist", "Optimist"],
-            "Belief Rule": ["f = 0 (always reverts)", "f = g·x_{t-1} (trend)", "f = b (constant bias)"],
-            "Role": ["Stabilising — anchors price", "Destabilising — amplifies trends", "Sentiment — upward pressure"],
-            "Cost": ["Yes (info cost)", "No", "Yes (analysis cost)"],
-        }
-        st.table(pd.DataFrame(data))
+        st.markdown(r"""
+        | Strategy        | Belief Rule                          | Role |
+        |-----------------|--------------------------------------|------|
+        | Fundamentalist  | $f_h = 0$                            | Stabilising — anchors price |
+        | Chartist        | $f_h = g \, x_{t-1}$                 | Destabilising — amplifies trends |
+        | Optimist        | $f_h = b$                            | Sentiment — upward pressure |
+        """)
 
         st.markdown("### Environment")
         st.markdown("""
-        - Single risky asset with price deviation **x_t** from fundamental value
-        - Risk-free asset with gross return **R = 1.01**
+        - Single risky asset with price deviation $x_t$ from fundamental value
+        - Risk-free asset with gross return $R = 1.01$
         - Market clears each period via excess demand
         """)
 
@@ -313,7 +313,9 @@ elif page == "2 · Model Design":
             st.markdown("""
             Each strategy earns fitness (profit minus cost) each period:
 
-            `U_h,t = realized_return × last_demand - cost`
+            $$
+            U_{h,t} = \\text{realized\\_return} \\times \\text{last\\_demand} - \\text{cost}
+            $$
 
             Exponentially Weighted Average (EWA) with memory parameter η=0.5.
             """)
@@ -323,18 +325,23 @@ elif page == "2 · Model Design":
             st.markdown("""
             Population shares update via the discrete-choice softmax rule:
 
-            `n_{h,t} = exp(β · U_h) / Σ exp(β · U_k)`
+            $$
+            n_{h,t} = \\frac{\\exp(\\beta \\cdot U_h)}{\\sum_{k} \\exp(\\beta \\cdot U_k)}
+            $$
 
-            **β (intensity of choice)** controls switching speed:
-            - Low β → weak response to fitness differences
-            - High β → winner-takes-all dynamics
+            $\\beta$ (intensity of choice) controls switching speed:
+            - Low $\\beta$ → weak response to fitness differences
+            - High $\\beta$ → winner-takes-all dynamics
             """)
 
             st.markdown("**💰 Demand**")
+
             st.markdown("""
             Mean-variance optimal demand:
 
-            `z_h = (f_h - R·x_{t-1}) / (a·σ²)`
+            $$
+            z_h = \\frac{f_h - R \\cdot x_{t-1}}{a \\cdot \\sigma^2}
+            $$
             """)
 
         st.markdown("**🔁 The Feedback Loop**")
@@ -354,37 +361,36 @@ beliefs (forecast rules)
     with tab3:
         st.markdown("### Initialisation")
         st.markdown("""
-        - Equal population weights: n_h,0 = 1/3 for all strategies
-        - Starting price deviation: x_0 = 0
+        - Equal population weights: $n_{h,0} = 1/3$ for all strategies
+        - Starting price deviation: $x_0 = 0$
         - All fitness and demand histories: 0
         - Random seed fixed for reproducibility
         """)
 
         st.markdown("### Price Formation Equation")
         st.latex(r"x_t = \frac{1}{R} \left( \sum_h n_{h,t} \cdot z_{h,t} + \varepsilon_t \right)")
-        st.markdown("where ε_t ~ N(0, σ_noise)")
+        st.markdown("where $ε_t$ ~ $N(0, σ_{noise})$")
 
         st.markdown("### Stability Condition")
         st.markdown("""
-        The fundamental equilibrium (x=0) is stable when **g < R** for the chartist.
-        With g=1.2 > R=1.01, the system is **above the instability threshold**,
+        The fundamental equilibrium ($x=0$) is stable when $g < R$ for the chartist.
+        With $g=1.2 > R=1.01$, the system is **above the instability threshold**,
         generating endogenous boom-bust cycles.
         """)
 
         st.markdown("### Calibrated Parameters")
-        params = {
-            "Parameter": ["β (intensity)", "σ² (variance)", "a (risk aversion)", "σ_noise (noise std)", "g (chartist trend)", "η (EWA memory)"],
-            "Value": [200, 0.25, 5.0, 0.1, 1.2, 0.5],
-            "Why": [
-                "Sharp switching — verified numerically stable",
-                "Calibrated so demands stay in ~0.1–0.5 range",
-                "Moderate risk aversion — prevents demand explosion",
-                "Sufficient to kick system between regimes",
-                "Above stability threshold (g > R=1.01)",
-                "2-period weighted average of past profits",
-            ],
-        }
-        st.table(pd.DataFrame(params))
+        st.markdown(r"""
+        ### Calibrated Parameters
+
+        | Parameter | Value | Why |
+        |----------|------|-----|
+        | $\beta$ (intensity) | 200 | Sharp switching — verified numerically stable |
+        | $\sigma^2$ (variance) | 0.25 | Calibrated so demands stay in ~0.1–0.5 range |
+        | $a$ (risk aversion) | 5.0 | Moderate risk aversion — prevents demand explosion |
+        | $\sigma_{\text{noise}}$ (noise std) | 0.1 | Sufficient to kick system between regimes |
+        | $g$ (chartist trend) | 1.2 | Above stability threshold ($g > R = 1.01$) |
+        | $\eta$ (EWA memory) | 0.5 | 2-period weighted average of past profits |
+        """)
 
 
 # ===========================================================================

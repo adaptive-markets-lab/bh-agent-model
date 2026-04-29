@@ -59,6 +59,7 @@ source .venv/bin/activate  # macOS/Linux
 
 ```bash
 pip install -e .
+pip install -r requirements.txt
 ```
 
 ### 4. Run the Streamlit app

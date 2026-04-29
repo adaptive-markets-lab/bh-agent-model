@@ -859,7 +859,7 @@ elif page == "3 · Live Demo":
     st.markdown("---")
 
     # ── Tabs for each plot ───────────────────────────────────────────────────
-    t1, t2, t3, t4 = st.tabs(["📊 Main Simulation", "📈 Rolling Dominance", "🔵 Phase Plot", "🎨 Regime View"])
+    t1, t2, t3 = st.tabs(["📊 Main Simulation", "📈 Rolling Dominance", "🎨 Regime View"])
 
     with t1:
         st.markdown("""
@@ -878,14 +878,6 @@ elif page == "3 · Live Demo":
         st.pyplot(plot_rolling(x_hist, w_hist, names))
 
     with t3:
-        st.markdown("""
-        **What to look for:** How each strategy's next-period weight depends on
-        the current price deviation. Chartists tend to benefit from trends,
-        contrarians from overreaction, and fundamentalists from mean reversion.
-        """)
-        st.pyplot(plot_phase(x_hist, w_hist, names))
-
-    with t4:
         st.markdown("""
         **What to look for:** Sustained coloured blocks, not per-step flickering.
         Blue blocks = fundamentalists stabilising the market.
@@ -950,20 +942,40 @@ elif page == "4 · Parameter Sweep":
 
     if run_sweep and len(sweep_betas) > 0:
         st.markdown("---")
-        st.markdown("### Price paths across β values")
+        st.markdown("### Strategy weight dynamics across β values")
+        st.markdown(
+            "Each panel shows how the chartist population share evolves over time at "
+            "that β. This is where β's effect is clearest — price paths look similar "
+            "because noise masks the signal, but weight dynamics change dramatically."
+        )
 
-        # ── Price path comparison ────────────────────────────────────────────
         fig, axes = plt.subplots(len(sweep_betas), 1, figsize=(12, 3 * len(sweep_betas)), sharex=True)
         if len(sweep_betas) == 1:
             axes = [axes]
 
         summary_rows = []
-
         for ax, beta_val in zip(axes, sweep_betas):
-            xh, wh, nm = run_simulation(beta=beta_val, g_chartist=sweep_g, b_optimist=0.01, noise_std=0.1, periods=sweep_periods)
-            ax.plot(xh, lw=0.8, color="steelblue")
-            ax.axhline(0, color="black", lw=0.5, ls="--", alpha=0.5)
+            xh, wh, nm = run_simulation(
+                beta=beta_val,
+                g_chartist=sweep_g,
+                g_contrarian=0.8,
+                b_optimist=0.01,
+                noise_std=0.1,
+                periods=sweep_periods,
+            )
+            steps = np.arange(len(xh))
+            equal = 1.0 / wh.shape[1]
+
+            # Plot all four strategy weights
+            for i, name in enumerate(nm):
+                ax.plot(steps, wh[:, i], lw=0.9, color=COLORS[i], label=name if beta_val == sweep_betas[0] else "")
+            ax.axhline(equal, color="black", lw=0.8, ls="--", alpha=0.6, label=f"Equal share ({equal:.2f})" if beta_val == sweep_betas[0] else "")
+            ax.set_ylim(0, 1)
             ax.set_ylabel(f"β = {beta_val}", fontsize=10)
+            ax.set_title(
+                f"β = {beta_val}  |  Chartist weight std = {wh[:,1].std():.3f}  |  Price std = {xh.std():.3f}",
+                fontsize=9,
+            )
 
             dom = np.argmax(wh, axis=1)
             summary_rows.append(
@@ -976,7 +988,10 @@ elif page == "4 · Parameter Sweep":
                 }
             )
 
-        axes[0].set_title("Price Deviation at Different β Values")
+        # Single shared legend at the top
+        handles = [plt.Line2D([0], [0], color=COLORS[i], lw=1.5, label=nm[i]) for i in range(len(nm))]
+        handles.append(plt.Line2D([0], [0], color="black", lw=0.8, ls="--", label=f"Equal share ({equal:.2f})"))
+        axes[0].legend(handles=handles, loc="upper right", fontsize=8)
         axes[-1].set_xlabel("Time step")
         plt.tight_layout()
         st.pyplot(fig)

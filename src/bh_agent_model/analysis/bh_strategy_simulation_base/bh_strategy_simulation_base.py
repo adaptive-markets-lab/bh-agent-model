@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
@@ -43,60 +42,9 @@ from bh_agent_model.utils.base.agents import (
     optimist,
 )
 from bh_agent_model.utils.base.markets import Market
+from bh_agent_model.utils.base.math_ops import softmax_stable
+from bh_agent_model.utils.base.models import SimulationConfig, SimulationResult
 from bh_agent_model.utils.helper.setup_logging import setup_logging
-
-
-@dataclass
-class SimulationConfig:
-    """
-    Configuration for a Brock-Hommes simulation run.
-
-    Args:
-        beta: Intensity of choice parameter.
-        periods: Number of simulated periods.
-        r: Gross risk-free return.
-        sigma2: Perceived variance.
-        risk_aversion: Risk aversion coefficient.
-        noise_std: Standard deviation of additive noise.
-        x0: Initial price deviation from fundamentals.
-        seed: Random seed for reproducibility.
-
-    """
-
-    beta: float
-    periods: int
-    r: float = 1.01
-    sigma2: float = 1.0
-    risk_aversion: float = 1.0
-    noise_std: float = 0.0
-    x0: float = 0.10
-    seed: int = 42
-
-
-@dataclass
-class SimulationResult:
-    """Container for a single simulation output."""
-
-    series: pd.DataFrame
-    traders: list[str]
-    config: SimulationConfig
-
-
-def softmax_stable(beta: float, fitnesses: np.ndarray) -> np.ndarray:
-    """
-    Compute numerically stable softmax weights.
-
-    Args:
-        beta: Intensity of choice parameter.
-        fitnesses: Fitness values.
-
-    Returns:
-        Normalized strategy weights.
-
-    """
-    max_f = np.max(fitnesses)
-    exp_vals = np.exp(beta * (fitnesses - max_f))
-    return exp_vals / exp_vals.sum()
 
 
 def run_simulation(traders: list[Trader], config: SimulationConfig) -> SimulationResult:

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
 
 
 @dataclass
@@ -77,3 +78,39 @@ class SobolResult:
     s1_conf: np.ndarray
     st: np.ndarray
     st_conf: np.ndarray
+
+
+@dataclass
+class SimulationConfig:
+    """
+    Configuration for a Brock-Hommes simulation run.
+
+    Args:
+        beta: Intensity of choice parameter.
+        periods: Number of simulated periods.
+        r: Gross risk-free return.
+        sigma2: Perceived variance.
+        risk_aversion: Risk aversion coefficient.
+        noise_std: Standard deviation of additive noise.
+        x0: Initial price deviation from fundamentals.
+        seed: Random seed for reproducibility.
+
+    """
+
+    beta: float
+    periods: int
+    r: float = 1.01
+    sigma2: float = 1.0
+    risk_aversion: float = 1.0
+    noise_std: float = 0.0
+    x0: float = 0.10
+    seed: int = 42
+
+
+@dataclass
+class SimulationResult:
+    """Container for a single simulation output."""
+
+    series: pd.DataFrame
+    traders: list[str]
+    config: SimulationConfig

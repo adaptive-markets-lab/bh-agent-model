@@ -18,12 +18,13 @@ Navigation (left sidebar):
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+from bh_agent_model.utils.base.agents import chartist, fundamentalist, optimist
+from bh_agent_model.utils.base.math_ops import softmax_stable
 
 # ---------------------------------------------------------------------------
 # Page config — must be the very first Streamlit call
@@ -34,72 +35,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
-# ---------------------------------------------------------------------------
-# ── Inline model (agents + market) ──────────────────────────────────────────
-# These are identical to the agents.py / markets.py but pasted here so the
-# app runs without needing the full bh_agent_model package installed.
-# ---------------------------------------------------------------------------
-
-
-@dataclass(slots=True)
-class Trader:
-    """Trader with a linear forecasting rule and adaptive fitness."""
-
-    g: float
-    b: float
-    cost: float
-    name: str
-    fitness: float = field(default=0.0, init=False)
-    last_demand: float = field(default=0.0, init=False)
-
-    def forecast(self, x_prev: float) -> float:
-        """Forecast the next price deviation from the previous deviation."""
-        return self.g * x_prev + self.b
-
-    def demand(self, x_prev: float, r: float, sigma2: float, risk_aversion: float) -> float:
-        """Compute mean-variance demand for the risky asset."""
-        f = self.forecast(x_prev)
-        z = (f - r * x_prev) / (risk_aversion * sigma2)
-        self.last_demand = z
-        return z
-
-    def update_fitness(self, realized_return: float) -> None:
-        """Update strategy fitness using realized profit and information cost."""
-        profit = realized_return * self.last_demand
-        eta = 0.5
-        self.fitness = eta * self.fitness + (1.0 - eta) * profit - self.cost
-
-    def reset(self) -> None:
-        """Reset trader state before a new simulation run."""
-        self.fitness = 0.0
-        self.last_demand = 0.0
-
-
-def fundamentalist(cost: float = 0.001) -> Trader:
-    """Return a Fundamentalist trader instance."""
-    return Trader(g=0.0, b=0.0, cost=cost, name="Fundamentalist")
-
-
-def chartist(g: float = 1.2) -> Trader:
-    """Return a Chartist trader instance."""
-    return Trader(g=g, b=0.0, cost=0.0, name="Chartist")
-
-
-def optimist(b: float = 0.01, cost: float = 0.001) -> Trader:
-    """Return an Optimist trader instance."""
-    return Trader(g=0.0, b=b, cost=cost, name="Optimist")
-
-
-def softmax_stable(beta: float, fitnesses: np.ndarray) -> np.ndarray:
-    """Return numerically stable softmax weights from strategy fitnesses."""
-    scaled = beta * (fitnesses - np.max(fitnesses))
-    scaled = np.clip(scaled, -500, 0)
-    exp_vals = np.exp(scaled)
-    total = np.sum(exp_vals)
-    if total == 0 or not np.isfinite(total):
-        return np.full(len(fitnesses), 1.0 / len(fitnesses))
-    return exp_vals / total
 
 
 def run_simulation(
@@ -125,7 +60,6 @@ def run_simulation(
     n = len(traders)
 
     weights = np.full(n, 1.0 / n)
-    fitnesses = np.zeros(n)
     x = 0.0
 
     x_hist, w_hist = [], []

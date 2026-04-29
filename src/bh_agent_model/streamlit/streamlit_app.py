@@ -42,6 +42,7 @@ st.set_page_config(
 def run_simulation(
     beta: float,
     g_chartist: float,
+    g_contrarian: float,
     b_optimist: float,
     noise_std: float,
     periods: int = 1000,
@@ -56,8 +57,10 @@ def run_simulation(
     traders = [
         fundamentalist(cost=0.001),
         chartist(g=g_chartist),
+        contrarian(g=g_contrarian),
         optimist(b=b_optimist, cost=0.001),
     ]
+
     names = [t.name for t in traders]
     n = len(traders)
 
@@ -70,12 +73,16 @@ def run_simulation(
         x_prev = x
         demands = np.array([t.demand(x_prev, r, sigma2, risk_aversion) for t in traders])
         noise = np.random.normal(0.0, noise_std)
+
         x_new = (np.dot(weights, demands) + noise) / r
         realized = x_new - x_prev
+
         for t in traders:
             t.update_fitness(realized)
+
         fitnesses = np.array([t.fitness for t in traders])
         weights = softmax_stable(beta, fitnesses)
+
         x = x_new
         x_hist.append(x)
         w_hist.append(weights.copy())
@@ -144,7 +151,7 @@ def run_real_data_strategy_simulation(
 # ── Shared plot helpers ──────────────────────────────────────────────────────
 # ---------------------------------------------------------------------------
 
-COLORS = ["#2196F3", "#FF9800", "#4CAF50"]  # blue, orange, green
+COLORS = ["#2196F3", "#FF9800", "#4CAF50", "#F44336"]  # blue, orange, green, red
 
 
 def plot_main(x_hist, w_hist, names, title="Simulated Price Deviation — BH ABM"):
@@ -170,8 +177,8 @@ def plot_main(x_hist, w_hist, names, title="Simulated Price Deviation — BH ABM
     return fig
 
 
-def plot_rolling(x_hist, w_hist, window=20):
-    """Plot raw and rolling-average strategy weights."""
+def plot_rolling(x_hist, w_hist, names, window=20):
+    """Plot raw and rolling-average strategy weights for all strategies."""
     fig, (ax0, ax1) = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
     steps = np.arange(len(x_hist))
 
@@ -181,32 +188,49 @@ def plot_rolling(x_hist, w_hist, window=20):
     ax0.set_title("Price Deviation")
 
     equal = 1.0 / w_hist.shape[1]
-    for idx, (color, label) in enumerate(zip(COLORS[:2], ["Fundamentalist", "Chartist"])):
-        raw = w_hist[:, idx]
-        ma = pd.Series(raw).rolling(window, min_periods=1).mean().values
-        ax1.plot(steps, raw, color=color, alpha=0.2, lw=0.7)
-        ax1.plot(steps, ma, color=color, lw=2.0, label=f"{label} ({window}-step MA)")
 
-    ax1.axhline(equal, color="black", lw=0.5, ls="--", alpha=0.5)
+    for i, name in enumerate(names):
+        raw = w_hist[:, i]
+        ma = pd.Series(raw).rolling(window, min_periods=1).mean().values
+
+        ax1.plot(steps, raw, color=COLORS[i], alpha=0.15, lw=0.7)
+        ax1.plot(steps, ma, color=COLORS[i], lw=2.0, label=f"{name} ({window}-step MA)")
+
+    ax1.axhline(equal, color="black", lw=0.5, ls="--", alpha=0.5, label=f"Equal share ({equal:.2f})")
     ax1.set_ylim(0, 1)
     ax1.set_ylabel("Population weight")
     ax1.set_xlabel("Time step")
-    ax1.set_title("Chartist vs Fundamentalist Dominance (smoothed)")
+    ax1.set_title("Strategy Dominance — All Strategies (smoothed)")
     ax1.legend(loc="upper right", fontsize=8)
+
     plt.tight_layout()
     return fig
 
 
-def plot_phase(x_hist, w_hist):
-    """Plot price deviation against next-period chartist weight."""
+def plot_phase(x_hist, w_hist, names):
+    """Plot price deviation against next-period weight for all strategies."""
     equal = 1.0 / w_hist.shape[1]
-    fig, ax = plt.subplots(figsize=(6, 6))
-    ax.scatter(x_hist[:-1], w_hist[1:, 1], alpha=0.25, s=5, color="#FF9800")
+
+    fig, ax = plt.subplots(figsize=(7, 7))
+
+    for i, name in enumerate(names):
+        ax.scatter(
+            x_hist[:-1],
+            w_hist[1:, i],
+            alpha=0.25,
+            s=6,
+            color=COLORS[i],
+            label=name,
+        )
+
     ax.axvline(0, color="black", lw=0.5, ls="--", alpha=0.6)
     ax.axhline(equal, color="black", lw=0.5, ls="--", alpha=0.6)
-    ax.set_xlabel("Price deviation  x_t")
-    ax.set_ylabel("Chartist weight  (t+1)")
-    ax.set_title("Phase plot: price vs next-period chartist dominance")
+
+    ax.set_xlabel("Price deviation x_t")
+    ax.set_ylabel("Strategy weight (t+1)")
+    ax.set_title("Phase plot: Price vs Next-Period Strategy Dominance")
+    ax.legend(markerscale=2, fontsize=8)
+
     plt.tight_layout()
     return fig
 
@@ -214,8 +238,14 @@ def plot_phase(x_hist, w_hist):
 def plot_regime(x_hist, w_hist, names):
     """Plot price deviation with shaded dominant-strategy regimes."""
     dominant = np.argmax(w_hist, axis=1)
-    regime_colors = {0: "cornflowerblue", 1: "orange", 2: "lightgreen"}
-    regime_labels = {0: "Fundamentalist", 1: "Chartist", 2: "Optimist"}
+
+    regime_colors = {
+        0: "cornflowerblue",
+        1: "orange",
+        2: "lightgreen",
+        3: "lightcoral",
+    }
+
     periods = len(x_hist)
     steps = np.arange(periods)
 
@@ -233,17 +263,31 @@ def plot_regime(x_hist, w_hist, names):
     ax0.set_ylabel("Price deviation (x_t)")
     ax0.set_title("Price Deviation — shaded by dominant strategy")
 
-    ax0.legend(handles=[Patch(facecolor=regime_colors[k], alpha=0.5, label=f"{regime_labels[k]} dominant") for k in regime_colors], loc="upper right", fontsize=8)
+    ax0.legend(
+        handles=[
+            Patch(
+                facecolor=regime_colors[i],
+                alpha=0.5,
+                label=f"{names[i]} dominant",
+            )
+            for i in range(len(names))
+        ],
+        loc="upper right",
+        fontsize=8,
+    )
 
     equal = 1.0 / len(names)
+
     for i, name in enumerate(names):
         ax1.plot(steps, w_hist[:, i], label=name, color=COLORS[i], lw=0.9)
+
     ax1.axhline(equal, color="black", lw=0.5, ls="--", alpha=0.5)
     ax1.set_ylim(0, 1)
     ax1.set_ylabel("Population weight")
     ax1.set_xlabel("Time step")
     ax1.set_title("Strategy Weights")
     ax1.legend(loc="upper right", fontsize=8)
+
     plt.tight_layout()
     return fig
 
@@ -503,7 +547,15 @@ elif page == "3 · Live Demo":
             "β — Intensity of switching", min_value=0.0, max_value=500.0, value=200.0, step=10.0, help="How aggressively traders switch to better-performing strategies. Higher = faster switching."
         )
         g_chartist = st.slider("g — Chartist trend strength", min_value=0.5, max_value=2.0, value=1.2, step=0.05, help="How strongly chartists extrapolate past trends. g > 1.01 is destabilising.")
-        b_optimist = st.slider("b — Optimist bias", min_value=0.0, max_value=0.05, value=0.01, step=0.005, help="Constant upward price bias held by the optimist strategy.")
+        g_contrarian = st.slider(
+            "g_c — Contrarian strength",
+            min_value=0.0,
+            max_value=2.0,
+            value=0.8,
+            step=0.05,
+            help="How strongly contrarians bet against price deviations. Larger values create stronger reversal pressure.",
+        )
+        b_optimist = st.slider("b — Optimist bias", min_value=0.0, max_value=0.1, value=0.05, step=0.01, help="Constant upward price bias held by the optimist strategy.")
         noise_std = st.slider("σ_noise — Market noise", min_value=0.0, max_value=0.3, value=0.1, step=0.01, help="Standard deviation of random exogenous shocks each period.")
         periods = st.slider(
             "T — Simulation length",
@@ -516,7 +568,15 @@ elif page == "3 · Live Demo":
 
     # ── Run simulation ───────────────────────────────────────────────────────
     with st.spinner("Running simulation..."):
-        x_hist, w_hist, names = run_simulation(beta=beta, g_chartist=g_chartist, b_optimist=b_optimist, noise_std=noise_std, periods=periods, seed=int(seed))
+        x_hist, w_hist, names = run_simulation(
+            beta=beta,
+            g_chartist=g_chartist,
+            g_contrarian=g_contrarian,
+            b_optimist=b_optimist,
+            noise_std=noise_std,
+            periods=periods,
+            seed=int(seed),
+        )
 
     # ── Summary metrics ──────────────────────────────────────────────────────
     dominant = np.argmax(w_hist, axis=1)
@@ -541,20 +601,19 @@ elif page == "3 · Live Demo":
 
     with t2:
         st.markdown("""
-        **What to look for:** The smoothed lines crossing each other.
-        When chartist MA rises above the equal-share dashed line, the market
-        is in a bubble regime. When it falls below, fundamentalists are recovering.
+        **What to look for:** Smoothed dominance across all strategies.
+        Chartists rise during trends, contrarians rise during reversals,
+        and fundamentalists stabilise price around the fundamental value.
         """)
-        st.pyplot(plot_rolling(x_hist, w_hist))
+        st.pyplot(plot_rolling(x_hist, w_hist, names))
 
     with t3:
         st.markdown("""
-        **What to look for:** Points clustering in the **upper corners**
-        (large price deviations → high chartist weight next period).
-        This means trend-chasing is being rewarded — the signature of emergence.
-        A downward arch means the opposite (chartists being punished).
+        **What to look for:** How each strategy's next-period weight depends on
+        the current price deviation. Chartists tend to benefit from trends,
+        contrarians from overreaction, and fundamentalists from mean reversion.
         """)
-        st.pyplot(plot_phase(x_hist, w_hist))
+        st.pyplot(plot_phase(x_hist, w_hist, names))
 
     with t4:
         st.markdown("""
@@ -734,7 +793,7 @@ elif page == "5 · Real Data":
         | Fundamentalist | $f_h = 0$ |
         | Chartist | $f_h = g x_{t-1}$ with $g = 1.1$ |
         | Contrarian | $f_h = g x_{t-1}$ with $g = -0.8$ |
-        | Optimist | $f_h = b$ with $b = 0.0005$ |
+        | Optimist | $f_h = b$ with $b = 0.1$ |
 
         Fitness is updated using realized market returns, then strategy shares are
         updated through the softmax rule.

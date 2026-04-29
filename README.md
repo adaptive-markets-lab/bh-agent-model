@@ -12,10 +12,13 @@ This repository implements the Brock–Hommes Adaptive Belief System, an Agent-B
 │   │   ├── bh_strategy_simulation_base/  # Base simulation framework
 │   │   ├── bh_strategy_simulation_real_data/ # Empirical replay (S&P 500)
 │   │   └── bh_strategy_simulation_synthetic_data/ # Endogenous dynamics
-│   └── utils/                            # Core Logic & Utilities
-│       ├── base/                         # Model Foundations
+│   ├── streamlit/
+│   │   └── streamlit_app.py              # Interactive Streamlit presentation app
+│   └── utils/
+│       ├── base/
 │       │   ├── agents.py                 # Trader types and demand rules
 │       │   ├── markets.py                # Market clearing & switching
+│       │   ├── math_ops.py               # Numerical helpers, including stable softmax
 │       │   └── models.py                 # Main orchestrators
 │       ├── helper/                       # Shared utility functions
 │       └── load_data/                    # yfinance data ingestion
@@ -33,6 +36,7 @@ This repository implements the Brock–Hommes Adaptive Belief System, an Agent-B
 └── requirements.txt                      # Project dependencies
 
 ---
+```
 
 ## Getting Started (For us users)
 
@@ -57,6 +61,13 @@ source .venv/bin/activate  # macOS/Linux
 pip install -e .
 ```
 
+### 4. Run the Streamlit app
+
+After installing the package in editable mode:
+
+```bash
+streamlit run src/bh_agent_model/streamlit/streamlit_app.py
+````
 ---
 
 ## Code Quality (Pre-commit + Ruff)

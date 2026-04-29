@@ -382,6 +382,7 @@ elif page == "2 · Model Design":
         |-----------------|--------------------------------------|------|
         | Fundamentalist  | $f_h = 0$                            | Stabilising — anchors price |
         | Chartist        | $f_h = g \, x_{t-1}$                 | Destabilising — amplifies trends |
+        | Contrarian      | $f_h = -g \, x_{t-1}$                | Stabilising — counteracts trends |
         | Optimist        | $f_h = b$                            | Sentiment — upward pressure |
         """)
 

@@ -22,9 +22,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+from matplotlib.patches import Patch
 
-from bh_agent_model.utils.base.agents import chartist, fundamentalist, optimist
+from bh_agent_model.utils.base.agents import chartist, contrarian, fundamentalist, optimist
 from bh_agent_model.utils.base.math_ops import softmax_stable
+from bh_agent_model.utils.load_data.load_data_from_yfinance import load_data_from_yfinance
 
 # ---------------------------------------------------------------------------
 # Page config — must be the very first Streamlit call
@@ -40,6 +42,7 @@ st.set_page_config(
 def run_simulation(
     beta: float,
     g_chartist: float,
+    g_contrarian: float,
     b_optimist: float,
     noise_std: float,
     periods: int = 1000,
@@ -54,8 +57,10 @@ def run_simulation(
     traders = [
         fundamentalist(cost=0.001),
         chartist(g=g_chartist),
+        contrarian(g=g_contrarian),
         optimist(b=b_optimist, cost=0.001),
     ]
+
     names = [t.name for t in traders]
     n = len(traders)
 
@@ -68,12 +73,16 @@ def run_simulation(
         x_prev = x
         demands = np.array([t.demand(x_prev, r, sigma2, risk_aversion) for t in traders])
         noise = np.random.normal(0.0, noise_std)
+
         x_new = (np.dot(weights, demands) + noise) / r
         realized = x_new - x_prev
+
         for t in traders:
             t.update_fitness(realized)
+
         fitnesses = np.array([t.fitness for t in traders])
         weights = softmax_stable(beta, fitnesses)
+
         x = x_new
         x_hist.append(x)
         w_hist.append(weights.copy())
@@ -81,11 +90,68 @@ def run_simulation(
     return np.array(x_hist), np.array(w_hist), names
 
 
+@st.cache_data(show_spinner=False)
+def run_real_data_strategy_simulation(
+    ticker: str = "^GSPC",
+    start_date: str = "2016-01-01",
+    end_date: str = "2025-12-31",
+    beta: float = 0.5,
+    r: float = 1.01,
+    risk_aversion: float = 5.0,
+    noise_std: float = 0.01,
+):
+    """Run BH strategy-weight simulation on real asset returns."""
+    data = load_data_from_yfinance(
+        ticker=ticker,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    returns = np.asarray(data.returns).reshape(-1)
+
+    traders = [
+        fundamentalist(cost=0.0002),
+        chartist(g=1.1),
+        contrarian(g=-0.8),
+        optimist(b=0.0005, cost=0.0001),
+    ]
+
+    sigma2 = max(data.sigma2, 1e-4)
+
+    for trader in traders:
+        trader.reset()
+
+    weights_history = []
+
+    for t in range(1, len(returns)):
+        x_prev = float(returns[t - 1])
+        realized_return = float(returns[t])
+
+        for trader in traders:
+            trader.demand(
+                x_prev=x_prev,
+                r=r,
+                sigma2=sigma2,
+                risk_aversion=risk_aversion,
+            )
+            trader.update_fitness(realized_return=realized_return)
+
+        fitnesses = np.array([trader.fitness for trader in traders], dtype=float)
+
+        max_f = np.max(fitnesses)
+        weights = np.exp(beta * (fitnesses - max_f))
+        weights /= np.sum(weights)
+
+        weights_history.append(weights.copy())
+
+    return data, np.array(weights_history), [trader.name for trader in traders]
+
+
 # ---------------------------------------------------------------------------
 # ── Shared plot helpers ──────────────────────────────────────────────────────
 # ---------------------------------------------------------------------------
 
-COLORS = ["#2196F3", "#FF9800", "#4CAF50"]  # blue, orange, green
+COLORS = ["#2196F3", "#FF9800", "#4CAF50", "#F44336"]  # blue, orange, green, red
 
 
 def plot_main(x_hist, w_hist, names, title="Simulated Price Deviation — BH ABM"):
@@ -111,8 +177,8 @@ def plot_main(x_hist, w_hist, names, title="Simulated Price Deviation — BH ABM
     return fig
 
 
-def plot_rolling(x_hist, w_hist, window=20):
-    """Plot raw and rolling-average strategy weights."""
+def plot_rolling(x_hist, w_hist, names, window=20):
+    """Plot raw and rolling-average strategy weights for all strategies."""
     fig, (ax0, ax1) = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
     steps = np.arange(len(x_hist))
 
@@ -122,32 +188,49 @@ def plot_rolling(x_hist, w_hist, window=20):
     ax0.set_title("Price Deviation")
 
     equal = 1.0 / w_hist.shape[1]
-    for idx, (color, label) in enumerate(zip(COLORS[:2], ["Fundamentalist", "Chartist"])):
-        raw = w_hist[:, idx]
-        ma = pd.Series(raw).rolling(window, min_periods=1).mean().values
-        ax1.plot(steps, raw, color=color, alpha=0.2, lw=0.7)
-        ax1.plot(steps, ma, color=color, lw=2.0, label=f"{label} ({window}-step MA)")
 
-    ax1.axhline(equal, color="black", lw=0.5, ls="--", alpha=0.5)
+    for i, name in enumerate(names):
+        raw = w_hist[:, i]
+        ma = pd.Series(raw).rolling(window, min_periods=1).mean().values
+
+        ax1.plot(steps, raw, color=COLORS[i], alpha=0.15, lw=0.7)
+        ax1.plot(steps, ma, color=COLORS[i], lw=2.0, label=f"{name} ({window}-step MA)")
+
+    ax1.axhline(equal, color="black", lw=0.5, ls="--", alpha=0.5, label=f"Equal share ({equal:.2f})")
     ax1.set_ylim(0, 1)
     ax1.set_ylabel("Population weight")
     ax1.set_xlabel("Time step")
-    ax1.set_title("Chartist vs Fundamentalist Dominance (smoothed)")
+    ax1.set_title("Strategy Dominance — All Strategies (smoothed)")
     ax1.legend(loc="upper right", fontsize=8)
+
     plt.tight_layout()
     return fig
 
 
-def plot_phase(x_hist, w_hist):
-    """Plot price deviation against next-period chartist weight."""
+def plot_phase(x_hist, w_hist, names):
+    """Plot price deviation against next-period weight for all strategies."""
     equal = 1.0 / w_hist.shape[1]
-    fig, ax = plt.subplots(figsize=(6, 6))
-    ax.scatter(x_hist[:-1], w_hist[1:, 1], alpha=0.25, s=5, color="#FF9800")
+
+    fig, ax = plt.subplots(figsize=(7, 7))
+
+    for i, name in enumerate(names):
+        ax.scatter(
+            x_hist[:-1],
+            w_hist[1:, i],
+            alpha=0.25,
+            s=6,
+            color=COLORS[i],
+            label=name,
+        )
+
     ax.axvline(0, color="black", lw=0.5, ls="--", alpha=0.6)
     ax.axhline(equal, color="black", lw=0.5, ls="--", alpha=0.6)
-    ax.set_xlabel("Price deviation  x_t")
-    ax.set_ylabel("Chartist weight  (t+1)")
-    ax.set_title("Phase plot: price vs next-period chartist dominance")
+
+    ax.set_xlabel("Price deviation x_t")
+    ax.set_ylabel("Strategy weight (t+1)")
+    ax.set_title("Phase plot: Price vs Next-Period Strategy Dominance")
+    ax.legend(markerscale=2, fontsize=8)
+
     plt.tight_layout()
     return fig
 
@@ -155,8 +238,14 @@ def plot_phase(x_hist, w_hist):
 def plot_regime(x_hist, w_hist, names):
     """Plot price deviation with shaded dominant-strategy regimes."""
     dominant = np.argmax(w_hist, axis=1)
-    regime_colors = {0: "cornflowerblue", 1: "orange", 2: "lightgreen"}
-    regime_labels = {0: "Fundamentalist", 1: "Chartist", 2: "Optimist"}
+
+    regime_colors = {
+        0: "cornflowerblue",
+        1: "orange",
+        2: "lightgreen",
+        3: "lightcoral",
+    }
+
     periods = len(x_hist)
     steps = np.arange(periods)
 
@@ -174,19 +263,60 @@ def plot_regime(x_hist, w_hist, names):
     ax0.set_ylabel("Price deviation (x_t)")
     ax0.set_title("Price Deviation — shaded by dominant strategy")
 
-    from matplotlib.patches import Patch
-
-    ax0.legend(handles=[Patch(facecolor=regime_colors[k], alpha=0.5, label=f"{regime_labels[k]} dominant") for k in regime_colors], loc="upper right", fontsize=8)
+    ax0.legend(
+        handles=[
+            Patch(
+                facecolor=regime_colors[i],
+                alpha=0.5,
+                label=f"{names[i]} dominant",
+            )
+            for i in range(len(names))
+        ],
+        loc="upper right",
+        fontsize=8,
+    )
 
     equal = 1.0 / len(names)
+
     for i, name in enumerate(names):
         ax1.plot(steps, w_hist[:, i], label=name, color=COLORS[i], lw=0.9)
+
     ax1.axhline(equal, color="black", lw=0.5, ls="--", alpha=0.5)
     ax1.set_ylim(0, 1)
     ax1.set_ylabel("Population weight")
     ax1.set_xlabel("Time step")
     ax1.set_title("Strategy Weights")
     ax1.legend(loc="upper right", fontsize=8)
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_real_data_strategy_weights(data, weights_history, trader_names):
+    """Plot real asset price and inferred strategy weights."""
+    fig, axes = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
+
+    axes[0].plot(data.dates, data.prices, lw=1.0, color="black")
+    axes[0].set_title("S&P 500 Price")
+    axes[0].set_ylabel("Price")
+
+    colors = ["#2196F3", "#FF9800", "#9C27B0", "#4CAF50"]
+
+    for i, name in enumerate(trader_names):
+        axes[1].plot(
+            data.dates[1:],
+            weights_history[:, i],
+            label=name,
+            lw=0.9,
+            color=colors[i % len(colors)],
+        )
+
+    axes[1].set_title("Strategy Dominance on Real S&P 500 Returns")
+    axes[1].set_ylabel("Population weight")
+    axes[1].set_xlabel("Date")
+    axes[1].set_ylim(0, 1)
+    axes[1].legend(loc="upper right", fontsize=8)
+
     plt.tight_layout()
     return fig
 
@@ -199,7 +329,14 @@ st.sidebar.title("📈 BH Agent-Based Model")
 st.sidebar.markdown("---")
 page = st.sidebar.radio(
     "Navigate",
-    ["1 · Motivation", "2 · Model Design", "3 · Live Demo", "4 · Parameter Sweep", "5 · Insights"],
+    [
+        "1 · Motivation",
+        "2 · Model Design",
+        "3 · Live Demo",
+        "4 · Parameter Sweep",
+        "5 · Real Data",
+        "6 · Insights",
+    ],
 )
 st.sidebar.markdown("---")
 st.sidebar.caption("Brock & Hommes (1998) — Heterogeneous Beliefs and Routes to Chaos")
@@ -288,6 +425,7 @@ elif page == "2 · Model Design":
         |-----------------|--------------------------------------|------|
         | Fundamentalist  | $f_h = 0$                            | Stabilising — anchors price |
         | Chartist        | $f_h = g \, x_{t-1}$                 | Destabilising — amplifies trends |
+        | Contrarian      | $f_h = -g \, x_{t-1}$                | Stabilising — counteracts trends |
         | Optimist        | $f_h = b$                            | Sentiment — upward pressure |
         """)
 
@@ -409,7 +547,15 @@ elif page == "3 · Live Demo":
             "β — Intensity of switching", min_value=0.0, max_value=500.0, value=200.0, step=10.0, help="How aggressively traders switch to better-performing strategies. Higher = faster switching."
         )
         g_chartist = st.slider("g — Chartist trend strength", min_value=0.5, max_value=2.0, value=1.2, step=0.05, help="How strongly chartists extrapolate past trends. g > 1.01 is destabilising.")
-        b_optimist = st.slider("b — Optimist bias", min_value=0.0, max_value=0.05, value=0.01, step=0.005, help="Constant upward price bias held by the optimist strategy.")
+        g_contrarian = st.slider(
+            "g_c — Contrarian strength",
+            min_value=0.0,
+            max_value=2.0,
+            value=0.8,
+            step=0.05,
+            help="How strongly contrarians bet against price deviations. Larger values create stronger reversal pressure.",
+        )
+        b_optimist = st.slider("b — Optimist bias", min_value=0.0, max_value=0.1, value=0.05, step=0.01, help="Constant upward price bias held by the optimist strategy.")
         noise_std = st.slider("σ_noise — Market noise", min_value=0.0, max_value=0.3, value=0.1, step=0.01, help="Standard deviation of random exogenous shocks each period.")
         periods = st.slider(
             "T — Simulation length",
@@ -422,7 +568,15 @@ elif page == "3 · Live Demo":
 
     # ── Run simulation ───────────────────────────────────────────────────────
     with st.spinner("Running simulation..."):
-        x_hist, w_hist, names = run_simulation(beta=beta, g_chartist=g_chartist, b_optimist=b_optimist, noise_std=noise_std, periods=periods, seed=int(seed))
+        x_hist, w_hist, names = run_simulation(
+            beta=beta,
+            g_chartist=g_chartist,
+            g_contrarian=g_contrarian,
+            b_optimist=b_optimist,
+            noise_std=noise_std,
+            periods=periods,
+            seed=int(seed),
+        )
 
     # ── Summary metrics ──────────────────────────────────────────────────────
     dominant = np.argmax(w_hist, axis=1)
@@ -447,20 +601,19 @@ elif page == "3 · Live Demo":
 
     with t2:
         st.markdown("""
-        **What to look for:** The smoothed lines crossing each other.
-        When chartist MA rises above the equal-share dashed line, the market
-        is in a bubble regime. When it falls below, fundamentalists are recovering.
+        **What to look for:** Smoothed dominance across all strategies.
+        Chartists rise during trends, contrarians rise during reversals,
+        and fundamentalists stabilise price around the fundamental value.
         """)
-        st.pyplot(plot_rolling(x_hist, w_hist))
+        st.pyplot(plot_rolling(x_hist, w_hist, names))
 
     with t3:
         st.markdown("""
-        **What to look for:** Points clustering in the **upper corners**
-        (large price deviations → high chartist weight next period).
-        This means trend-chasing is being rewarded — the signature of emergence.
-        A downward arch means the opposite (chartists being punished).
+        **What to look for:** How each strategy's next-period weight depends on
+        the current price deviation. Chartists tend to benefit from trends,
+        contrarians from overreaction, and fundamentalists from mean reversion.
         """)
-        st.pyplot(plot_phase(x_hist, w_hist))
+        st.pyplot(plot_phase(x_hist, w_hist, names))
 
     with t4:
         st.markdown("""
@@ -585,9 +738,118 @@ elif page == "4 · Parameter Sweep":
 
 
 # ===========================================================================
-# PAGE 5 — INSIGHTS
+# PAGE 5 — REAL DATA
 # ===========================================================================
-elif page == "5 · Insights":
+elif page == "5 · Real Data":
+    st.title("📊 Real Data — Strategy Dominance on S&P 500")
+    st.markdown("""
+    This page applies the Brock-Hommes strategy-switching mechanism to real
+    S&P 500 returns. Instead of generating artificial price deviations, the model
+    uses observed market returns to update strategy fitness and population weights.
+    """)
+    st.markdown("---")
+
+    col1, col2 = st.columns([1, 2])
+
+    with col1:
+        ticker = st.text_input("Ticker", value="^GSPC")
+        start_date = st.date_input("Start date", value=pd.to_datetime("2016-01-01"))
+        end_date = st.date_input("End date", value=pd.to_datetime("2025-12-31"))
+
+        beta_real = st.slider(
+            "β — Intensity of choice",
+            min_value=0.0,
+            max_value=5.0,
+            value=0.5,
+            step=0.1,
+            help="Controls how strongly strategies switch toward higher realized fitness.",
+        )
+
+        r_real = st.slider(
+            "R — Gross risk-free return",
+            min_value=1.0,
+            max_value=1.05,
+            value=1.01,
+            step=0.001,
+            format="%.3f",
+        )
+
+        risk_aversion_real = st.slider(
+            "a — Risk aversion",
+            min_value=1.0,
+            max_value=20.0,
+            value=5.0,
+            step=0.5,
+        )
+
+        run_real = st.button("▶ Run real-data simulation", type="primary")
+
+    with col2:
+        st.markdown(r"""
+        **Strategies used**
+
+        | Strategy | Belief rule |
+        |---|---|
+        | Fundamentalist | $f_h = 0$ |
+        | Chartist | $f_h = g x_{t-1}$ with $g = 1.1$ |
+        | Contrarian | $f_h = g x_{t-1}$ with $g = -0.8$ |
+        | Optimist | $f_h = b$ with $b = 0.1$ |
+
+        Fitness is updated using realized market returns, then strategy shares are
+        updated through the softmax rule.
+        """)
+
+    if run_real:
+        with st.spinner("Loading market data and running strategy simulation..."):
+            data, weights_history, trader_names = run_real_data_strategy_simulation(
+                ticker=ticker,
+                start_date=str(start_date),
+                end_date=str(end_date),
+                beta=beta_real,
+                r=r_real,
+                risk_aversion=risk_aversion_real,
+            )
+
+        st.markdown("---")
+        st.pyplot(plot_real_data_strategy_weights(data, weights_history, trader_names))
+
+        dominant = np.argmax(weights_history, axis=1)
+
+        st.markdown("### Summary statistics")
+        c1, c2, c3, c4 = st.columns(4)
+
+        c1.metric("Observations", f"{len(weights_history):,}")
+        c2.metric("Return variance", f"{data.sigma2:.6f}")
+        c3.metric("Max strategy weight", f"{weights_history.max():.2f}")
+        c4.metric("Most dominant", trader_names[np.bincount(dominant).argmax()])
+
+        summary = pd.DataFrame(
+            {
+                "Strategy": trader_names,
+                "Mean weight": weights_history.mean(axis=0),
+                "Min weight": weights_history.min(axis=0),
+                "Max weight": weights_history.max(axis=0),
+                "Dominant periods (%)": [np.mean(dominant == i) * 100 for i in range(len(trader_names))],
+            }
+        )
+
+        st.dataframe(
+            summary.style.format(
+                {
+                    "Mean weight": "{:.3f}",
+                    "Min weight": "{:.3f}",
+                    "Max weight": "{:.3f}",
+                    "Dominant periods (%)": "{:.1f}",
+                }
+            ),
+            use_container_width=True,
+        )
+
+
+# ===========================================================================
+# PAGE 6 — INSIGHTS
+# ===========================================================================
+elif page == "6 · Insights":
     st.title("💡 Insights & Conclusions")
     st.markdown("---")
 

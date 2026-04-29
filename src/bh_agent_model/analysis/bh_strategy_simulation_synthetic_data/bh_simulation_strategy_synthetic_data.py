@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.patches import Patch
 
-from bh_agent_model.utils.base.agents import chartist, fundamentalist, optimist
+from bh_agent_model.utils.base.agents import chartist, contrarian, fundamentalist, optimist
 from bh_agent_model.utils.base.markets import Market
 
 if __name__ == "__main__":
@@ -47,7 +47,8 @@ if __name__ == "__main__":
     traders = [
         fundamentalist(cost=0.001),  # Keeps price near 0
         chartist(g=1.2),  # Source of instability/bubbles
-        optimist(b=0.01, cost=0.001),  # Constant upward pressure
+        contrarian(g=-0.2),  # Stabilising — exploits overreaction / reverses trends
+        optimist(b=0.1, cost=0.001),  # Constant upward pressure
     ]
 
     # Initialize the environment
@@ -78,7 +79,7 @@ if __name__ == "__main__":
     n_traders = len(traders)
     equal_share = 1.0 / n_traders
     chartist_idx = 1
-    COLORS = ["blue", "orange", "green"]
+    COLORS = ["blue", "orange", "green", "red"]
     WINDOW = 20  # Window size for rolling averages
 
     # ---------------------------------------------------------------------------
@@ -117,16 +118,17 @@ if __name__ == "__main__":
     axes2[0].set_ylabel("Price deviation (x_t)")
     axes2[0].set_title("Price Deviation")
 
-    for idx, color, label in [(chartist_idx, "orange", "Chartist"), (0, "blue", "Fundamentalist")]:
-        raw = weights_history[:, idx]
+    for i, trader in enumerate(traders):
+        raw = weights_history[:, i]
         ma = pd.Series(raw).rolling(WINDOW, min_periods=1).mean().values
-        axes2[1].plot(steps, raw, color=color, alpha=0.2, lw=0.8)
-        axes2[1].plot(steps, ma, color=color, lw=2.0, label=f"{label} ({WINDOW}-step MA)")
+
+        axes2[1].plot(steps, raw, color=COLORS[i], alpha=0.2, lw=0.8)
+        axes2[1].plot(steps, ma, color=COLORS[i], lw=2.0, label=f"{trader.name} ({WINDOW}-step MA)")
 
     axes2[1].axhline(equal_share, color="black", lw=0.5, ls="--", alpha=0.5)
     axes2[1].set_ylabel("Population weight")
     axes2[1].set_xlabel("Time step")
-    axes2[1].set_title("Chartist vs Fundamentalist Dominance (smoothed)")
+    axes2[1].set_title("Strategy Dominance (smoothed)")
     axes2[1].legend(loc="upper right")
     axes2[1].set_ylim(0, 1)
 
@@ -140,12 +142,24 @@ if __name__ == "__main__":
     # ---------------------------------------------------------------------------
     fig3, ax3 = plt.subplots(figsize=(7, 7))
 
-    ax3.scatter(x_history[:-1], weights_history[1:, chartist_idx], alpha=0.3, s=6, color="orange")
+    for i, trader in enumerate(traders):
+        ax3.scatter(
+            x_history[:-1],
+            weights_history[1:, i],
+            alpha=0.25,
+            s=6,
+            color=COLORS[i],
+            label=trader.name,
+        )
+
     ax3.axvline(0, color="black", lw=0.5, ls="--", alpha=0.6)
     ax3.axhline(equal_share, color="black", lw=0.5, ls="--", alpha=0.6)
+
     ax3.set_xlabel("Price deviation x_t")
-    ax3.set_ylabel("Chartist weight (t+1)")
-    ax3.set_title("Phase plot: Price vs Next-Period Chartist Dominance")
+    ax3.set_ylabel("Strategy weight (t+1)")
+    ax3.set_title("Phase plot: Price vs Next-Period Strategy Dominance")
+
+    ax3.legend(markerscale=2, fontsize=8)
 
     plt.tight_layout()
     plt.savefig(os.path.join(OUTPUT_DIR, "fig3_phase_plot.png"), dpi=150, bbox_inches="tight")
@@ -156,9 +170,20 @@ if __name__ == "__main__":
     # Shading the background based on which strategy is currently "winning".
     # ---------------------------------------------------------------------------
     dominant = np.argmax(weights_history, axis=1)
-    regime_colors = {0: "cornflowerblue", 1: "orange", 2: "lightgreen"}
-    regime_labels = {0: "Fundamentalist dominant", 1: "Chartist dominant", 2: "Optimist dominant"}
 
+    regime_colors = {
+        0: "cornflowerblue",
+        1: "orange",
+        2: "lightgreen",
+        3: "lightcoral",
+    }
+
+    regime_labels = {
+        0: "Fundamentalist dominant",
+        1: "Chartist dominant",
+        2: "Contrarian dominant",
+        3: "Optimist dominant",
+    }
     fig4, axes4 = plt.subplots(2, 1, figsize=(13, 7), sharex=True)
 
     prev, start = dominant[0], 0

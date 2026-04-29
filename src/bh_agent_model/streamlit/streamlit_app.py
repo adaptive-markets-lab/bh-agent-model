@@ -13,7 +13,7 @@ Navigation (left sidebar):
     2. Model Design      — how the ABM works (ODD summary)
     3. Live Demo         — interactive parameter sliders + instant plots
     4. Parameter Sweep   — how beta changes market dynamics
-    5. Real data
+    5. Real data Analysis
     6. Sensitivity analysis
 """
 
@@ -1010,7 +1010,7 @@ elif page == "4 · Parameter Sweep":
 # ===========================================================================
 # PAGE 5 — REAL DATA
 # ===========================================================================
-elif page == "5 · Real Data":
+elif page == "5 · Real Data Analysis":
     st.title("📊 Real Data — Strategy Dominance on S&P 500")
     st.markdown("""
     This page applies the Brock-Hommes strategy-switching mechanism to real

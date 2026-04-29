@@ -13,7 +13,8 @@ Navigation (left sidebar):
     2. Model Design      — how the ABM works (ODD summary)
     3. Live Demo         — interactive parameter sliders + instant plots
     4. Parameter Sweep   — how beta changes market dynamics
-    5. Insights          — what we found and what it means
+    5. Real data Analysis
+    6. Sensitivity analysis
 """
 
 from __future__ import annotations
@@ -604,8 +605,7 @@ page = st.sidebar.radio(
         "3 · Live Demo",
         "4 · Parameter Sweep",
         "5 · Real Data",
-        "6 · Insights",
-        "7 · Sobol Sensitivity",
+        "6 · Sobol Sensitivity",
     ],
 )
 st.sidebar.markdown("---")
@@ -1010,7 +1010,7 @@ elif page == "4 · Parameter Sweep":
 # ===========================================================================
 # PAGE 5 — REAL DATA
 # ===========================================================================
-elif page == "5 · Real Data":
+elif page == "5 · Real Data Analysis":
     st.title("📊 Real Data — Strategy Dominance on S&P 500")
     st.markdown("""
     This page applies the Brock-Hommes strategy-switching mechanism to real
@@ -1116,123 +1116,7 @@ elif page == "5 · Real Data":
         )
 
 
-# ===========================================================================
-# PAGE 6 — INSIGHTS
-# ===========================================================================
-elif page == "6 · Insights":
-    st.title("💡 Insights & Conclusions")
-    st.markdown("---")
-
-    st.markdown("### What We Found")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown("#### 🔑 Key Result 1 — Emergence is Real")
-        st.markdown("""
-        With g=1.2 > R=1.01 (above the stability boundary), the model produces
-        genuine emergent dynamics. Chartist weight swings from near 0% to 65%,
-        generating price deviations up to ±0.5 from fundamental value.
-
-        No individual agent plans a bubble — it emerges from the fitness-switching
-        feedback loop alone.
-        """)
-
-        st.markdown("#### 🔑 Key Result 2 — σ² is the Hidden Stabiliser")
-        st.markdown("""
-        The most important numerical finding: σ² = 0.25 is required for stability.
-
-        - σ² too small → demands explode → price diverges to 1e307
-        - σ² too large → demands near zero → no fitness difference → no switching
-
-        This parameter balances the demand scale and is the key to getting
-        the model to behave correctly.
-        """)
-
-    with col2:
-        st.markdown("#### 🔑 Key Result 3 — β Controls Regime Sharpness")
-        st.markdown("""
-        Low β (< 10): Weights barely move. The market has weak evolutionary
-        pressure — strategies coexist but don't compete meaningfully.
-
-        High β (200): Sharp switching. When a strategy does well for a few
-        periods, it rapidly takes over. This creates the burst-like chartist
-        episodes we observe.
-
-        Extreme β (500+): Lock-in risk. One strategy permanently wins.
-        """)
-
-        st.markdown("#### 🔑 Key Result 4 — The Phase Plot Signature")
-        st.markdown("""
-        The phase plot (price deviation vs next-period chartist weight)
-        shows a distinctive spike shape: chartists gain weight primarily
-        when prices are near zero but trending.
-
-        This is because large deviations eventually reverse, punishing
-        chartists who stayed long too long. The bubble-then-crash cycle
-        is visible in the temporal structure of this plot.
-        """)
-
-    st.markdown("---")
-    st.markdown("### Limitations & Extensions")
-
-    col3, col4 = st.columns(2)
-    with col3:
-        st.warning("""
-        **Limitations**
-        - Model uses normalised σ²=0.25, not empirically calibrated
-        - Fitness is a simplified proxy for real trading P&L
-        - No market microstructure (bid-ask spread, volume)
-        - Only 3 strategy types — real markets have many more
-        """)
-    with col4:
-        st.info("""
-        **Natural Extensions**
-        - Bayesian calibration of β and g to S&P 500 data
-        - Sobol sensitivity analysis (already built by our team)
-        - Adding contrarian strategy to study crash dynamics
-        - Connecting to empirical stylised facts (fat tails, autocorrelation)
-        """)
-
-    st.markdown("---")
-    st.markdown("### Connection to the ODD Protocol")
-    st.markdown("""
-    | ODD Section | What we implemented |
-    |------------|---------------------|
-    | **Purpose** | Explain endogenous financial market crises |
-    | **Entities** | 3 trader types with heterogeneous belief rules |
-    | **Process** | Demand → price → fitness → switching per period |
-    | **Emergence** | Bubble-crash cycles from local switching rules |
-    | **Adaptation** | Fitness-based evolutionary strategy switching |
-    | **Initialisation** | Equal weights, zero price, fixed seed |
-    | **Input** | Endogenous only — no external data required |
-    | **Submodels** | Demand equation, EWA fitness, softmax switching |
-    """)
-
-    st.markdown("---")
-    st.markdown("### References")
-    st.markdown("""
-    - Brock, W. A., & Hommes, C. H. (1998). Heterogeneous beliefs and routes to chaos
-      in a simple asset pricing model. *Journal of Economic Dynamics and Control*, 22(8-9), 1235-1274.
-    - Grimm, V., et al. (2006). A standard protocol for describing individual-based and
-      agent-based models. *Ecological Modelling*, 198(1-2), 115-126.
-    - Hommes, C. H. (2006). Heterogeneous agent models in economics and finance.
-      *Handbook of Computational Economics*, 2, 1109-1186.
-    """)
-
-    st.markdown("---")
-    # Quick re-run demo at bottom of insights page
-    st.markdown("### Quick Demo — Best Parameters")
-    if st.button("▶ Run reference simulation (β=200, g=1.2)"):
-        x_hist, w_hist, names = run_simulation(beta=200, g_chartist=1.2, b_optimist=0.01, noise_std=0.1, periods=1000, seed=42)
-        st.pyplot(plot_main(x_hist, w_hist, names, title="Reference run: β=200, g=1.2, noise=0.1"))
-        dom = np.argmax(w_hist, axis=1)
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Chartist weight std", f"{w_hist[:,1].std():.3f}")
-        c2.metric("Chartist dominant", f"{np.mean(dom==1)*100:.1f}%")
-        c3.metric("Price std", f"{x_hist.std():.3f}")
-
-elif page == "7 · Sobol Sensitivity":
+elif page == "6 · Sobol Sensitivity":
     st.title("🧪 Sobol Sensitivity Analysis")
     st.markdown("""
     This page runs a global Sobol sensitivity analysis for the Brock-Hommes model.

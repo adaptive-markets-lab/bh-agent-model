@@ -23,8 +23,9 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from bh_agent_model.utils.base.agents import chartist, fundamentalist, optimist
+from bh_agent_model.utils.base.agents import chartist, contrarian, fundamentalist, optimist
 from bh_agent_model.utils.base.math_ops import softmax_stable
+from bh_agent_model.utils.load_data.load_data_from_yfinance import load_data_from_yfinance
 
 # ---------------------------------------------------------------------------
 # Page config — must be the very first Streamlit call
@@ -79,6 +80,63 @@ def run_simulation(
         w_hist.append(weights.copy())
 
     return np.array(x_hist), np.array(w_hist), names
+
+
+@st.cache_data(show_spinner=False)
+def run_real_data_strategy_simulation(
+    ticker: str = "^GSPC",
+    start_date: str = "2016-01-01",
+    end_date: str = "2025-12-31",
+    beta: float = 0.5,
+    r: float = 1.01,
+    risk_aversion: float = 5.0,
+    noise_std: float = 0.01,
+):
+    """Run BH strategy-weight simulation on real asset returns."""
+    data = load_data_from_yfinance(
+        ticker=ticker,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    returns = np.asarray(data.returns).reshape(-1)
+
+    traders = [
+        fundamentalist(cost=0.0002),
+        chartist(g=1.1),
+        contrarian(g=-0.8),
+        optimist(b=0.0005, cost=0.0001),
+    ]
+
+    sigma2 = max(data.sigma2, 1e-4)
+
+    for trader in traders:
+        trader.reset()
+
+    weights_history = []
+
+    for t in range(1, len(returns)):
+        x_prev = float(returns[t - 1])
+        realized_return = float(returns[t])
+
+        for trader in traders:
+            trader.demand(
+                x_prev=x_prev,
+                r=r,
+                sigma2=sigma2,
+                risk_aversion=risk_aversion,
+            )
+            trader.update_fitness(realized_return=realized_return)
+
+        fitnesses = np.array([trader.fitness for trader in traders], dtype=float)
+
+        max_f = np.max(fitnesses)
+        weights = np.exp(beta * (fitnesses - max_f))
+        weights /= np.sum(weights)
+
+        weights_history.append(weights.copy())
+
+    return data, np.array(weights_history), [trader.name for trader in traders]
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +249,35 @@ def plot_regime(x_hist, w_hist, names):
     return fig
 
 
+def plot_real_data_strategy_weights(data, weights_history, trader_names):
+    """Plot real asset price and inferred strategy weights."""
+    fig, axes = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
+
+    axes[0].plot(data.dates, data.prices, lw=1.0, color="black")
+    axes[0].set_title("S&P 500 Price")
+    axes[0].set_ylabel("Price")
+
+    colors = ["#2196F3", "#FF9800", "#9C27B0", "#4CAF50"]
+
+    for i, name in enumerate(trader_names):
+        axes[1].plot(
+            data.dates[1:],
+            weights_history[:, i],
+            label=name,
+            lw=0.9,
+            color=colors[i % len(colors)],
+        )
+
+    axes[1].set_title("Strategy Dominance on Real S&P 500 Returns")
+    axes[1].set_ylabel("Population weight")
+    axes[1].set_xlabel("Date")
+    axes[1].set_ylim(0, 1)
+    axes[1].legend(loc="upper right", fontsize=8)
+
+    plt.tight_layout()
+    return fig
+
+
 # ---------------------------------------------------------------------------
 # ── Sidebar navigation ───────────────────────────────────────────────────────
 # ---------------------------------------------------------------------------
@@ -199,7 +286,14 @@ st.sidebar.title("📈 BH Agent-Based Model")
 st.sidebar.markdown("---")
 page = st.sidebar.radio(
     "Navigate",
-    ["1 · Motivation", "2 · Model Design", "3 · Live Demo", "4 · Parameter Sweep", "5 · Insights"],
+    [
+        "1 · Motivation",
+        "2 · Model Design",
+        "3 · Live Demo",
+        "4 · Parameter Sweep",
+        "5 · Real Data",
+        "6 · Insights",
+    ],
 )
 st.sidebar.markdown("---")
 st.sidebar.caption("Brock & Hommes (1998) — Heterogeneous Beliefs and Routes to Chaos")
@@ -585,9 +679,118 @@ elif page == "4 · Parameter Sweep":
 
 
 # ===========================================================================
-# PAGE 5 — INSIGHTS
+# PAGE 5 — REAL DATA
 # ===========================================================================
-elif page == "5 · Insights":
+elif page == "5 · Real Data":
+    st.title("📊 Real Data — Strategy Dominance on S&P 500")
+    st.markdown("""
+    This page applies the Brock-Hommes strategy-switching mechanism to real
+    S&P 500 returns. Instead of generating artificial price deviations, the model
+    uses observed market returns to update strategy fitness and population weights.
+    """)
+    st.markdown("---")
+
+    col1, col2 = st.columns([1, 2])
+
+    with col1:
+        ticker = st.text_input("Ticker", value="^GSPC")
+        start_date = st.date_input("Start date", value=pd.to_datetime("2016-01-01"))
+        end_date = st.date_input("End date", value=pd.to_datetime("2025-12-31"))
+
+        beta_real = st.slider(
+            "β — Intensity of choice",
+            min_value=0.0,
+            max_value=5.0,
+            value=0.5,
+            step=0.1,
+            help="Controls how strongly strategies switch toward higher realized fitness.",
+        )
+
+        r_real = st.slider(
+            "R — Gross risk-free return",
+            min_value=1.0,
+            max_value=1.05,
+            value=1.01,
+            step=0.001,
+            format="%.3f",
+        )
+
+        risk_aversion_real = st.slider(
+            "a — Risk aversion",
+            min_value=1.0,
+            max_value=20.0,
+            value=5.0,
+            step=0.5,
+        )
+
+        run_real = st.button("▶ Run real-data simulation", type="primary")
+
+    with col2:
+        st.markdown(r"""
+        **Strategies used**
+
+        | Strategy | Belief rule |
+        |---|---|
+        | Fundamentalist | $f_h = 0$ |
+        | Chartist | $f_h = g x_{t-1}$ with $g = 1.1$ |
+        | Contrarian | $f_h = g x_{t-1}$ with $g = -0.8$ |
+        | Optimist | $f_h = b$ with $b = 0.0005$ |
+
+        Fitness is updated using realized market returns, then strategy shares are
+        updated through the softmax rule.
+        """)
+
+    if run_real:
+        with st.spinner("Loading market data and running strategy simulation..."):
+            data, weights_history, trader_names = run_real_data_strategy_simulation(
+                ticker=ticker,
+                start_date=str(start_date),
+                end_date=str(end_date),
+                beta=beta_real,
+                r=r_real,
+                risk_aversion=risk_aversion_real,
+            )
+
+        st.markdown("---")
+        st.pyplot(plot_real_data_strategy_weights(data, weights_history, trader_names))
+
+        dominant = np.argmax(weights_history, axis=1)
+
+        st.markdown("### Summary statistics")
+        c1, c2, c3, c4 = st.columns(4)
+
+        c1.metric("Observations", f"{len(weights_history):,}")
+        c2.metric("Return variance", f"{data.sigma2:.6f}")
+        c3.metric("Max strategy weight", f"{weights_history.max():.2f}")
+        c4.metric("Most dominant", trader_names[np.bincount(dominant).argmax()])
+
+        summary = pd.DataFrame(
+            {
+                "Strategy": trader_names,
+                "Mean weight": weights_history.mean(axis=0),
+                "Min weight": weights_history.min(axis=0),
+                "Max weight": weights_history.max(axis=0),
+                "Dominant periods (%)": [np.mean(dominant == i) * 100 for i in range(len(trader_names))],
+            }
+        )
+
+        st.dataframe(
+            summary.style.format(
+                {
+                    "Mean weight": "{:.3f}",
+                    "Min weight": "{:.3f}",
+                    "Max weight": "{:.3f}",
+                    "Dominant periods (%)": "{:.1f}",
+                }
+            ),
+            use_container_width=True,
+        )
+
+
+# ===========================================================================
+# PAGE 6 — INSIGHTS
+# ===========================================================================
+elif page == "6 · Insights":
     st.title("💡 Insights & Conclusions")
     st.markdown("---")
 

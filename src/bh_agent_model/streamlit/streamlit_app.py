@@ -23,9 +23,12 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from matplotlib.patches import Patch
+from SALib.analyze import sobol
+from SALib.sample import sobol as sobol_sample
 
 from bh_agent_model.utils.base.agents import chartist, contrarian, fundamentalist, optimist
 from bh_agent_model.utils.base.math_ops import softmax_stable
+from bh_agent_model.utils.base.models import SobolResult
 from bh_agent_model.utils.load_data.load_data_from_yfinance import load_data_from_yfinance
 
 # ---------------------------------------------------------------------------
@@ -152,6 +155,272 @@ def run_real_data_strategy_simulation(
 # ---------------------------------------------------------------------------
 
 COLORS = ["#2196F3", "#FF9800", "#4CAF50", "#F44336"]  # blue, orange, green, red
+
+SOBOL_PROBLEM = {
+    "num_vars": 9,
+    "names": [
+        "beta",
+        "r",
+        "sigma2",
+        "risk_aversion",
+        "g_chartist",
+        "g_contrarian",
+        "b_optimist",
+        "cost_fundamentalist",
+        "cost_optimist",
+    ],
+    "bounds": [
+        [0.0, 200.0],
+        [1.001, 1.05],
+        [1e-5, 1e-2],
+        [1.0, 20.0],
+        [0.5, 2.0],
+        [-2.0, -0.1],
+        [0.0, 0.005],
+        [0.0, 0.002],
+        [0.0, 0.002],
+    ],
+}
+
+OUTPUT_METRICS = [
+    ("mean_weight_fundamentalist", 0, "mean"),
+    ("mean_weight_chartist", 1, "mean"),
+    ("mean_weight_contrarian", 2, "mean"),
+    ("mean_weight_optimist", 3, "mean"),
+    ("dominance_fundamentalist", 0, "dominance"),
+    ("dominance_chartist", 1, "dominance"),
+    ("dominance_contrarian", 2, "dominance"),
+    ("dominance_optimist", 3, "dominance"),
+    ("switching_volatility", -1, "std_market"),
+]
+
+
+def run_sobol_simulation_from_array(returns: np.ndarray, param_row: np.ndarray) -> np.ndarray:
+    """Run BH strategy-weight sobol simulation on real asset returns."""
+    (
+        beta,
+        r,
+        sigma2,
+        risk_aversion,
+        g_chartist,
+        g_contrarian,
+        b_optimist,
+        cost_fundamentalist,
+        cost_optimist,
+    ) = param_row
+
+    sigma2 = max(float(sigma2), 1e-8)
+
+    traders = [
+        fundamentalist(cost=float(cost_fundamentalist)),
+        chartist(g=float(g_chartist)),
+        contrarian(g=float(g_contrarian)),
+        optimist(b=float(b_optimist), cost=float(cost_optimist)),
+    ]
+
+    for trader in traders:
+        trader.reset()
+
+    n_periods = len(returns) - 1
+    weights_history = np.empty((n_periods, len(traders)), dtype=float)
+
+    for t in range(1, len(returns)):
+        x_prev = float(returns[t - 1])
+        realized_return = float(returns[t])
+
+        for trader in traders:
+            trader.demand(
+                x_prev=x_prev,
+                r=float(r),
+                sigma2=sigma2,
+                risk_aversion=float(risk_aversion),
+            )
+            trader.update_fitness(realized_return=realized_return)
+
+        fitnesses = np.array([trader.fitness for trader in traders], dtype=float)
+        weights = softmax_stable(float(beta), fitnesses)
+
+        weights_history[t - 1] = weights
+
+    return weights_history
+
+
+def extract_sobol_outputs(weights_history: np.ndarray) -> np.ndarray:
+    """Extract sobol outputs from history and return them in a numpy array."""
+    mean_w = weights_history.mean(axis=0)
+    std_w = weights_history.std(axis=0)
+
+    dominance = np.array(
+        [np.mean(weights_history[:, h] > 0.30) for h in range(4)],
+        dtype=float,
+    )
+    switching_vol = float(std_w.mean())
+
+    outputs = np.empty(len(OUTPUT_METRICS), dtype=float)
+
+    for i, (_, trader_idx, stat) in enumerate(OUTPUT_METRICS):
+        if stat == "mean":
+            outputs[i] = mean_w[trader_idx]
+        elif stat == "dominance":
+            outputs[i] = dominance[trader_idx]
+        elif stat == "std_market":
+            outputs[i] = switching_vol
+
+    return outputs
+
+
+@st.cache_data(show_spinner=False)
+def run_sobol_cached(
+    ticker: str,
+    start_date: str,
+    end_date: str,
+    n_base: int,
+) -> tuple[dict[str, SobolResult], pd.DataFrame]:
+    """Run sobol with cached."""
+    data = load_data_from_yfinance(
+        ticker=ticker,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    returns = np.asarray(data.returns).reshape(-1)
+
+    problem = SOBOL_PROBLEM
+    param_matrix = sobol_sample.sample(problem, n_base, calc_second_order=True)
+
+    output_matrix = np.empty((param_matrix.shape[0], len(OUTPUT_METRICS)), dtype=float)
+
+    for i, param_row in enumerate(param_matrix):
+        weights_history = run_sobol_simulation_from_array(returns, param_row)
+        output_matrix[i] = extract_sobol_outputs(weights_history)
+
+    results = {}
+
+    for col_idx, (metric_name, _, _) in enumerate(OUTPUT_METRICS):
+        y = output_matrix[:, col_idx]
+
+        if np.std(y) < 1e-12:
+            results[metric_name] = SobolResult(
+                output_name=metric_name,
+                param_names=problem["names"],
+                s1=np.zeros(len(problem["names"])),
+                s1_conf=np.zeros(len(problem["names"])),
+                st=np.zeros(len(problem["names"])),
+                st_conf=np.zeros(len(problem["names"])),
+            )
+            continue
+
+        si = sobol.analyze(
+            problem,
+            y,
+            calc_second_order=True,
+            print_to_console=False,
+        )
+
+        results[metric_name] = SobolResult(
+            output_name=metric_name,
+            param_names=problem["names"],
+            s1=np.array(si["S1"]),
+            s1_conf=np.array(si["S1_conf"]),
+            st=np.array(si["ST"]),
+            st_conf=np.array(si["ST_conf"]),
+        )
+
+    rows = []
+    for metric_name, result in results.items():
+        for i, param in enumerate(result.param_names):
+            rows.append(
+                {
+                    "Output": metric_name,
+                    "Parameter": param,
+                    "S1": result.s1[i],
+                    "S1 conf": result.s1_conf[i],
+                    "ST": result.st[i],
+                    "ST conf": result.st_conf[i],
+                    "ST - S1": result.st[i] - result.s1[i],
+                }
+            )
+
+    return results, pd.DataFrame(rows)
+
+
+def plot_sobol_results(results: dict[str, SobolResult]):
+    """Create plot for sobol results."""
+    n_outputs = len(results)
+    n_cols = 3
+    n_rows = -(-n_outputs // n_cols)
+
+    fig, axes = plt.subplots(
+        n_rows,
+        n_cols,
+        figsize=(6 * n_cols, 4 * n_rows),
+        squeeze=False,
+    )
+
+    ax_flat = axes.flatten()
+
+    short_labels = {
+        "beta": r"$\beta$",
+        "r": r"$r$",
+        "sigma2": r"$\sigma^2$",
+        "risk_aversion": r"$a$",
+        "g_chartist": r"$g_c$",
+        "g_contrarian": r"$g_{ct}$",
+        "b_optimist": r"$b_{opt}$",
+        "cost_fundamentalist": r"$c_f$",
+        "cost_optimist": r"$c_o$",
+    }
+
+    for ax_idx, (metric_name, result) in enumerate(results.items()):
+        ax = ax_flat[ax_idx]
+        x = np.arange(len(result.param_names))
+        width = 0.35
+
+        ax.bar(
+            x - width / 2,
+            result.s1,
+            width,
+            yerr=result.s1_conf,
+            capsize=3,
+            label="S1 direct",
+            color="#2196F3",
+            alpha=0.85,
+        )
+        ax.bar(
+            x + width / 2,
+            result.st,
+            width,
+            yerr=result.st_conf,
+            capsize=3,
+            label="ST total",
+            color="#F44336",
+            alpha=0.85,
+        )
+
+        ax.set_title(metric_name.replace("_", " "), fontsize=9, fontweight="bold")
+        ax.set_xticks(x)
+        ax.set_xticklabels(
+            [short_labels.get(n, n) for n in result.param_names],
+            fontsize=8,
+        )
+        ax.set_ylabel("Sobol index", fontsize=8)
+        ax.set_ylim(0, min(1.05, max(result.st.max(), result.s1.max()) * 1.3 + 0.05))
+        ax.axhline(0, color="black", linewidth=0.5)
+        ax.tick_params(labelsize=8)
+
+        if ax_idx == 0:
+            ax.legend(fontsize=7)
+
+    for ax_idx in range(len(results), len(ax_flat)):
+        ax_flat[ax_idx].set_visible(False)
+
+    fig.suptitle(
+        "Sobol Sensitivity Analysis — Brock-Hommes Model\n" "S1 = direct effect | ST = total effect | Gap = interaction",
+        fontsize=11,
+        fontweight="bold",
+    )
+
+    plt.tight_layout()
+    return fig
 
 
 def plot_main(x_hist, w_hist, names, title="Simulated Price Deviation — BH ABM"):
@@ -336,6 +605,7 @@ page = st.sidebar.radio(
         "4 · Parameter Sweep",
         "5 · Real Data",
         "6 · Insights",
+        "7 · Sobol Sensitivity",
     ],
 )
 st.sidebar.markdown("---")
@@ -961,3 +1231,98 @@ elif page == "6 · Insights":
         c1.metric("Chartist weight std", f"{w_hist[:,1].std():.3f}")
         c2.metric("Chartist dominant", f"{np.mean(dom==1)*100:.1f}%")
         c3.metric("Price std", f"{x_hist.std():.3f}")
+
+elif page == "7 · Sobol Sensitivity":
+    st.title("🧪 Sobol Sensitivity Analysis")
+    st.markdown("""
+    This page runs a global Sobol sensitivity analysis for the Brock-Hommes model.
+
+    **S1** measures the direct effect of each parameter.
+    **ST** measures the total effect, including interactions.
+    **ST - S1** captures interaction contribution.
+    """)
+
+    st.markdown("---")
+
+    col1, col2 = st.columns([1, 2])
+
+    with col1:
+        ticker_sobol = st.text_input("Ticker", value="^GSPC")
+        start_sobol = st.date_input("Sobol start date", value=pd.to_datetime("2016-01-01"))
+        end_sobol = st.date_input("Sobol end date", value=pd.to_datetime("2025-12-31"))
+
+        n_base = st.select_slider(
+            "Base sample size N",
+            options=[64, 128, 256, 512, 1024],
+            value=256,
+            help="Total runs = N × (2k + 2). With k=9, total runs = N × 20.",
+        )
+
+        total_runs = n_base * (2 * SOBOL_PROBLEM["num_vars"] + 2)
+        st.metric("Total simulations", f"{total_runs:,}")
+
+        run_sobol_button = st.button("▶ Run Sobol analysis", type="primary")
+
+    with col2:
+        st.markdown("""
+        **Recommended use**
+
+        | N | Runs | Use case |
+        |---:|---:|---|
+        | 64 | 1,280 | Fast demo |
+        | 128 | 2,560 | Classroom run |
+        | 256 | 5,120 | Reasonable app default |
+        | 512 | 10,240 | More stable |
+        | 1024 | 20,480 | Slow but stronger |
+        """)
+
+    if st.button("Clear Sobol cache"):
+        run_sobol_cached.clear()
+        st.success("Sobol cache cleared.")
+
+    if run_sobol_button:
+        run_sobol_cached.clear()  # forces fresh run every button click
+
+        with st.spinner(f"Running {total_runs:,} simulations..."):
+            results, sobol_table = run_sobol_cached(
+                ticker=ticker_sobol,
+                start_date=str(start_sobol),
+                end_date=str(end_sobol),
+                n_base=int(n_base),
+            )
+            sobol_table = sobol_table.fillna(0.0)
+
+        st.success("Sobol analysis complete.")
+
+        st.markdown("### Sobol index table")
+        st.dataframe(
+            sobol_table.style.format(
+                {
+                    "S1": "{:.3f}",
+                    "S1 conf": "{:.3f}",
+                    "ST": "{:.3f}",
+                    "ST conf": "{:.3f}",
+                    "ST - S1": "{:.3f}",
+                }
+            ),
+            use_container_width=True,
+        )
+
+        csv = sobol_table.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download Sobol table as CSV",
+            data=csv,
+            file_name="sobol_sensitivity_results.csv",
+            mime="text/csv",
+        )
+
+        st.markdown("### S1 vs ST by output metric")
+        st.pyplot(plot_sobol_results(results))
+
+        st.markdown("### Interpretation guide")
+        st.info("""
+        - Large **S1**: parameter has a strong direct effect.
+        - Large **ST** but small **S1**: parameter matters mostly through interactions.
+        - Large **ST - S1**: interaction-heavy parameter.
+        - Near-zero **S1** and **ST**: parameter has little influence on that output.
+        """)

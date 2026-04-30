@@ -617,7 +617,7 @@ st.sidebar.caption("Brock & Hommes (1998) — Heterogeneous Beliefs and Routes t
 # ===========================================================================
 if page == "1 · Motivation":
     st.title("📈 Brock-Hommes Agent-Based Model")
-    st.subheader("Why do financial markets crash — even when everyone is rational?")
+    st.subheader("Why do financial markets become unstable — even when traders follow simple, reasonable rules?")
 
     st.markdown("---")
 
@@ -737,7 +737,7 @@ elif page == "2 · Model Design":
             n_{h,t} = \\frac{\\exp(\\beta \\cdot U_h)}{\\sum_{k} \\exp(\\beta \\cdot U_k)}
             $$
 
-            $\\beta$ (intensity of choice) controls switching speed:
+            $\\beta$ (intensity of switching) controls switching speed:
             - Low $\\beta$ → weak response to fitness differences
             - High $\\beta$ → winner-takes-all dynamics
             """)
@@ -769,7 +769,7 @@ beliefs (forecast rules)
     with tab3:
         st.markdown("### Initialisation")
         st.markdown("""
-        - Equal population weights: $n_{h,0} = 1/3$ for all strategies
+        - Equal population weights: $n_{h,0} = 1/4$ for all strategies
         - Starting price deviation: $x_0 = 0$
         - All fitness and demand histories: 0
         - Random seed fixed for reproducibility
@@ -1028,10 +1028,16 @@ elif page == "4 · Parameter Sweep":
 elif page == "5 · Real Data Analysis":
     st.title("📊 Real Data — Strategy Dominance on S&P 500")
     st.markdown("""
-    This page applies the Brock-Hommes strategy-switching mechanism to real
-    S&P 500 returns. Instead of generating artificial price deviations, the model
-    uses observed market returns to update strategy fitness and population weights.
+    This page connects the Brock-Hommes model to real S&P 500 data by asking whether
+    observed market returns can be interpreted as shifts in dominance among heterogeneous
+    trading strategies.
+
+    Instead of generating artificial price deviations, the model uses observed returns
+    to update strategy fitness and population weights. During turbulent or crash-like
+    periods, the key question is whether the model shows visible shifts in strategy
+    dominance rather than constant representative-agent behavior.
     """)
+
     st.markdown("---")
 
     col1, col2 = st.columns([1, 2])
@@ -1042,7 +1048,7 @@ elif page == "5 · Real Data Analysis":
         end_date = st.date_input("End date", value=pd.to_datetime("2025-12-31"))
 
         beta_real = st.slider(
-            "β — Intensity of choice",
+            "β — Intensity of Switching",
             min_value=0.0,
             max_value=5.0,
             value=0.5,

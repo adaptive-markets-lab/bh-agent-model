@@ -1065,13 +1065,7 @@ elif page == "5 · Real Data Analysis":
             format="%.3f",
         )
 
-        risk_aversion_real = st.slider(
-            "a — Risk aversion",
-            min_value=1.0,
-            max_value=20.0,
-            value=5.0,
-            step=0.5,
-        )
+        risk_aversion_real = 5.0
 
         run_real = st.button("▶ Run real-data simulation", type="primary")
 

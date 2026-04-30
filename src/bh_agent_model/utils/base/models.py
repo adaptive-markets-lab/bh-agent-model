@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
@@ -114,3 +115,12 @@ class SimulationResult:
     series: pd.DataFrame
     traders: list[str]
     config: SimulationConfig
+
+
+class MarketDataLike(Protocol):
+    """Protocol for market data objects used in the Brock-Hommes real-data simulation."""
+
+    returns: Any
+    sigma2: float
+    dates: Any
+    prices: Any

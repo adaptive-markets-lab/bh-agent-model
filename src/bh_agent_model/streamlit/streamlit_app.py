@@ -23,13 +23,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+from matplotlib.figure import Figure
 from matplotlib.patches import Patch
 from SALib.analyze import sobol
 from SALib.sample import sobol as sobol_sample
 
 from bh_agent_model.utils.base.agents import chartist, contrarian, fundamentalist, optimist
 from bh_agent_model.utils.base.math_ops import softmax_stable
-from bh_agent_model.utils.base.models import SobolResult
+from bh_agent_model.utils.base.models import MarketDataLike, SobolResult
 from bh_agent_model.utils.load_data.load_data_from_yfinance import load_data_from_yfinance
 
 # ---------------------------------------------------------------------------
@@ -102,8 +103,7 @@ def run_real_data_strategy_simulation(
     beta: float = 0.5,
     r: float = 1.01,
     risk_aversion: float = 5.0,
-    noise_std: float = 0.01,
-):
+) -> tuple[MarketDataLike, np.ndarray, list[str]]:
     """Run BH strategy-weight simulation on real asset returns."""
     data = load_data_from_yfinance(
         ticker=ticker,
@@ -344,7 +344,7 @@ def run_sobol_cached(
     return results, pd.DataFrame(rows)
 
 
-def plot_sobol_results(results: dict[str, SobolResult]):
+def plot_sobol_results(results: dict[str, SobolResult]) -> Figure:
     """Create plot for sobol results."""
     n_outputs = len(results)
     n_cols = 3
@@ -424,7 +424,7 @@ def plot_sobol_results(results: dict[str, SobolResult]):
     return fig
 
 
-def plot_main(x_hist, w_hist, names, title="Simulated Price Deviation — BH ABM"):
+def plot_main(x_hist: np.ndarray, w_hist: np.ndarray, names: list, title="Simulated Price Deviation — BH ABM") -> Figure:
     """Plot price deviation and population weights over time."""
     fig, (ax0, ax1) = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
     steps = np.arange(len(x_hist))
@@ -447,7 +447,7 @@ def plot_main(x_hist, w_hist, names, title="Simulated Price Deviation — BH ABM
     return fig
 
 
-def plot_rolling(x_hist, w_hist, names, window=20):
+def plot_rolling(x_hist: np.ndarray, w_hist: np.ndarray, names, window=20) -> Figure:
     """Plot raw and rolling-average strategy weights for all strategies."""
     fig, (ax0, ax1) = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
     steps = np.arange(len(x_hist))
@@ -477,7 +477,7 @@ def plot_rolling(x_hist, w_hist, names, window=20):
     return fig
 
 
-def plot_phase(x_hist, w_hist, names):
+def plot_phase(x_hist: np.ndarray, w_hist: np.ndarray, names: list) -> Figure:
     """Plot price deviation against next-period weight for all strategies."""
     equal = 1.0 / w_hist.shape[1]
 
@@ -505,7 +505,7 @@ def plot_phase(x_hist, w_hist, names):
     return fig
 
 
-def plot_regime(x_hist, w_hist, names):
+def plot_regime(x_hist: np.ndarray, w_hist: np.ndarray, names: list) -> Figure:
     """Plot price deviation with shaded dominant-strategy regimes."""
     dominant = np.argmax(w_hist, axis=1)
 
@@ -562,7 +562,7 @@ def plot_regime(x_hist, w_hist, names):
     return fig
 
 
-def plot_real_data_strategy_weights(data, weights_history, trader_names):
+def plot_real_data_strategy_weights(data, weights_history, trader_names) -> Figure:
     """Plot real asset price and inferred strategy weights."""
     fig, axes = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
 
@@ -604,7 +604,7 @@ page = st.sidebar.radio(
         "2 · Model Design",
         "3 · Live Demo",
         "4 · Parameter Sweep",
-        "5 · Real Data",
+        "5 · Real Data Analysis",
         "6 · Sobol Sensitivity",
     ],
 )
@@ -1081,7 +1081,7 @@ elif page == "5 · Real Data Analysis":
             )
 
         st.markdown("---")
-        st.pyplot(plot_real_data_strategy_weights(data, weights_history, trader_names))
+        st.pyplot(plot_real_data_strategy_weights(data=data, weights_history=weights_history, trader_names=trader_names))
 
         dominant = np.argmax(weights_history, axis=1)
 

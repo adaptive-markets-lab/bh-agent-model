@@ -1142,6 +1142,30 @@ elif page == "6 · Sobol Sensitivity":
     st.markdown("""
     This page runs a global Sobol sensitivity analysis for the Brock-Hommes model.
 
+    ### Target variables
+
+    The Sobol analysis does **not** use price directly as a single target variable.
+    Instead, it evaluates how model parameters affect several **output metrics** derived
+    from the simulated strategy-weight dynamics.
+
+    The target variables are:
+
+    | Target variable | Meaning |
+    |---|---|
+    | `mean_weight_fundamentalist` | Average population share of fundamentalists |
+    | `mean_weight_chartist` | Average population share of chartists |
+    | `mean_weight_contrarian` | Average population share of contrarians |
+    | `mean_weight_optimist` | Average population share of optimists |
+    | `dominance_fundamentalist` | Fraction of periods where fundamentalists exceed 30% weight |
+    | `dominance_chartist` | Fraction of periods where chartists exceed 30% weight |
+    | `dominance_contrarian` | Fraction of periods where contrarians exceed 30% weight |
+    | `dominance_optimist` | Fraction of periods where optimists exceed 30% weight |
+    | `switching_volatility` | Average volatility of strategy weights over time |
+
+    So, each Sobol result answers:
+
+    > **Which input parameters most influence this specific strategy-weight outcome?**
+
     **S1** measures the direct effect of each parameter.
     **ST** measures the total effect, including interactions.
     **ST - S1** captures interaction contribution.

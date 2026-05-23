@@ -101,10 +101,35 @@ def _build_traders(
     cost_optimist: float,
 ) -> tuple[list[Trader], float, float, float, float]:
     """
-    Build traders and return them alongside the scalar market params.
+    Build trader agents and return them alongside the scalar market parameters.
+
+    Args:
+        beta:
+            Intensity of choice parameter governing trader strategy switching.
+        r:
+            Gross risk-free interest rate.
+        sigma2:
+            Variance of asset returns.
+        risk_aversion:
+            Risk aversion coefficient used in trader demand.
+        g_chartist:
+            Trend extrapolation coefficient for chartist traders.
+        g_contrarian:
+            Mean-reversion coefficient for contrarian traders.
+        b_optimist:
+            Bias term for optimistic traders.
+        cost_fundamentalist:
+            Information or trading cost for fundamentalist traders.
+        cost_optimist:
+            Information or trading cost for optimistic traders.
 
     Returns:
-        Tuple of (traders, beta, r, sigma2, risk_aversion).
+        Tuple containing:
+            - traders: List of initialized trader agents.
+            - beta: Intensity of choice parameter.
+            - r: Risk-free interest rate.
+            - sigma2: Return variance.
+            - risk_aversion: Risk aversion coefficient.
 
     """
     traders = [
@@ -355,6 +380,9 @@ def _plot_sobol_results(
     Args:
         results: Dictionary of SobolResult objects from run_sobol().
         save_path: File path for the saved PNG figure.
+
+    Returns:
+        None.
 
     """
     n_outputs = len(results)
